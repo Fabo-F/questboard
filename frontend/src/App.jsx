@@ -85,6 +85,12 @@ export default function App() {
 
   const levelInfo = getLevel(dash.totalXp);
 
+  const tasksSorted = [...dash.tasks].sort((a, b) => {
+    const order = { OPEN: 0, DONE: 1 };
+    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+    return b.id - a.id;
+  });
+
   return (
     <div
       style={{
@@ -150,7 +156,7 @@ export default function App() {
 
       <h2>Quests</h2>
 
-      {dash.tasks.map((t) => (
+      {tasksSorted.map((t) => (
         <div
           key={t.id}
           style={{
