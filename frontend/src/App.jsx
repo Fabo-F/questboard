@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { getDashboard, createTask, completeTask, deleteTask } from "./api";
+import "./App.css";
 
 
 const USER_ID = 1;
@@ -7,11 +8,42 @@ const USER_ID = 1;
 export default function App() {
   const [dash, setDash] = useState(null);
   const [title, setTitle] = useState("");
-  const [xp, setXp] = useState(25);
+  const [size, setSize] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  const XP_BY_SIZE = {
+    SMALL: 25,
+    MEDIUM: 50,
+    BIG: 100,
+  }
+  const toastIdRef = useRef(1);
 
   async function refresh() {
     const data = await getDashboard(USER_ID);
+    data.tasks = sortTasks(data.tasks);
     setDash(data);
+  }
+
+  function sortTasks(tasks) {
+    return [...tasks].sort((a, b) => {
+      if (a.status !== b.status) return a.status === "OPEN" ? -1 : 1;
+
+      return b.id - a.id;
+    });
+  }
+
+  function showToast(toastObj, duration = 2200) {
+    const id = toastIdRef.current++;
+    const newToast = { id, ...toastObj };
+
+    setToasts((prev) => [newToast, ...prev]);
+
+    if (duration !== null) {
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, duration);
+    }
   }
 
   useEffect(() => {
@@ -20,6 +52,7 @@ export default function App() {
     (async () => {
       try {
         const data = await getDashboard(USER_ID);
+        data.tasks = sortTasks(data.tasks);
         if (!cancelled) setDash(data);
       } catch (e) {
         console.error(e);
@@ -33,25 +66,29 @@ export default function App() {
 
   async function addTask(e) {
     e.preventDefault();
+
+    if (!size) {
+      showToast({ message: "Pick a quest size first 👇" });
+      return;
+    }
+
     await createTask({
       userId: USER_ID,
       title,
       description: "",
-      xp: Number(xp),
+      xp: XP_BY_SIZE[size],
     });
+
     setTitle("");
+    setSize(null);
     await refresh();
+    showToast({message: "Quest created ✅"});
   }
 
   async function complete(id) {
     await completeTask(id);
     await refresh();
-  }
-
-  async function remove(id) {
-    if (!confirm("Delete this quest?")) return;
-    await deleteTask(id);
-    await refresh();
+    showToast({message: "Quest completed 🎉"});
   }
 
   function getLevel(totalXp) {
@@ -86,98 +123,181 @@ export default function App() {
   const levelInfo = getLevel(dash.totalXp);
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: "64px 24px",
-        maxWidth: 900,
-        margin: "0 auto",
-      }}
-    >
-      <h1>QuestBoard</h1>
+    <>
+      {/* Toasts */}
+      <div className="toastStack">
+        {toasts.map((t) => (
+          <div key={t.id} className="toast">
+            <div className="toastMessage">{t.message}</div>
 
-      <h3>User: {dash.username}</h3>
+            {t.secondaryLabel && (
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  t.onSecondary?.();
+                  setToasts((prev) => prev.filter((x) => x.id !== t.id));
+                }}
+              >
+                {t.secondaryLabel}
+              </button>
+            )}
 
-      <div style={{ marginTop: 24, marginBottom: 24}}>
-        <div style={{ marginTop: 10 }}>
-          Level: <b>{levelInfo.level}</b>
-        </div>
-
-        <div
-          style={{
-            height: 10,
-            background: "#333",
-            borderRadius: 6,
-            overflow: "hidden",
-            marginTop: 6,
-            width: 300,
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              width: `${levelInfo.progress * 100}%`,
-              background: "#4cafef",
-              transition: "width 0.3s ease",
-            }}
-          />
-        </div>
-
-        <div style={{ marginTop: 6, opacity: 0.8, fontSize: 13 }}>
-          {levelInfo.next - dash.totalXp} XP to next level
-        </div>
+            {t.actionLabel && (
+              <button
+                className="btn"
+                onClick={() => {
+                  t.onAction?.();
+                  setToasts((prev) => prev.filter((x) => x.id !== t.id));
+                }}
+              >
+                {t.actionLabel}
+              </button>
+            )}
+          </div>
+        ))}
       </div>
 
-      <form onSubmit={addTask} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="New quest"
-          required
-        />
+      {/* Confirm delete modal */}
+      {confirmDelete && (
+        <div className="modalOverlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Delete quest?</div>
+            <div className="modalText">
+              Are you sure you want to delete <b>{confirmDelete.title}</b>?
+            </div>
 
-        <input
-          type="number"
-          value={xp}
-          onChange={(e) => setXp(e.target.value)}
-          min={1}
-          max={500}
-          style={{ width: 90 }}
-        />
+            <div className="modalActions">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setConfirmDelete(null)}
+              >
+                Cancel
+              </button>
 
-        <button type="submit">Add</button>
-      </form>
+              <button
+                className="btn btn-danger"
+                onClick={async () => {
+                  const { id } = confirmDelete;
+                  setConfirmDelete(null);
+                  await deleteTask(id);
+                  await refresh();
+                  showToast({ message: "Quest deleted 🗑️" });
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <h2>Quests</h2>
-
-      {dash.tasks.map((t) => (
-        <div
-          key={t.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "8px 0",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            {t.title} — {t.status} — {t.xp} XP
+      {/* Page */}
+      <div className="page">
+        <header className="header">
+          <div className="headerLeft">
+            QuestBoard
           </div>
 
-          {t.status !== "DONE" && (
-            <button onClick={() => complete(t.id)}>Complete</button>
-          )}
+          <div className="headerRight">
+            <span className="headerUser">
+              Logged in as <b>{dash.username}</b>
+            </span>
 
-          <button
-            onClick={() => remove(t.id)}
-            style={{ opacity: 0.8 }}
-            title="Delete quest"
-          >
-            Delete
-          </button>
+            <button className="btn btn-ghost">
+              Profile
+            </button>
+          </div>
+        </header>
+
+        <div className="card">
+          <div className="panel">
+            <div className="levelBlock">
+              <div>Level: <b>{levelInfo.level}</b></div>
+
+              <div className="progressBar">
+                <div
+                  className="progressFill"
+                  style={{ width: `${levelInfo.progress * 100}%` }}
+                />
+              </div>
+
+              <div className="levelHint">
+                {levelInfo.next - dash.totalXp} XP to next level
+              </div>
+            </div>
+
+            <form onSubmit={addTask} className="taskFormCol">
+              <div className="fieldBlock">
+                <div className="fieldLabel">Title</div>
+
+                <input
+                  className="textInput"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="New quest"
+                  required
+                />
+              </div>
+
+              <div className="sizeRow">
+                <span className="fieldLabel">Quest size</span>
+
+                <div className="sizeSelector">
+                  {["SMALL", "MEDIUM", "BIG"].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`sizeBtn ${size === s ? "active" : ""}`}
+                      onClick={() => setSize(s)}
+                    >
+                      <span className="sizeName">{s}</span>
+                      <span className="sizeXp">{XP_BY_SIZE[s]} XP</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="addRow">
+                <button
+                  className="btn btn-primary btn-add"
+                  type="submit"
+                  disabled={!title.trim() || !size}
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      ))}
-    </div>
+
+        <div className="tasks card">
+          <h2 className="sectionTitle">Quests</h2>
+
+          {dash.tasks.map((t) => (
+            <div key={t.id} className="taskRow">
+              <div className="taskInfo">
+                <div className="taskTitle">{t.title}</div>
+                <div className="taskMeta">
+                  {t.status} • {t.xp} XP
+                </div>
+              </div>
+
+              {t.status !== "DONE" && (
+                <button className="btn" onClick={() => complete(t.id)}>
+                  Complete
+                </button>
+              )}
+
+              <button
+                className="btn btn-danger"
+                onClick={() => setConfirmDelete({ id: t.id, title: t.title })}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
