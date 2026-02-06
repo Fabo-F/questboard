@@ -290,7 +290,9 @@ export default function App() {
 
               <button
                 className="btn btn-danger"
-                onClick={() => setConfirmDelete({ id: t.id, title: t.title })}
+                onClick={() =>
+                  setConfirmDelete({ id: t.id, title: t.title })
+                }
               >
                 Delete
               </button>
