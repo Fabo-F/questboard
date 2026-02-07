@@ -23,3 +23,30 @@ export async function deleteTask(taskId) {
   const res = await fetch(`${API}/api/tasks/${taskId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await res.text());
 }
+
+async function parseError(res) {
+  const text = await res.text();
+  return text || `HTTP ${res.status}`;
+}
+
+export async function login(username, password) {
+  const res = await fetch("http://localhost:8080/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+export async function register(username, password) {
+  const res = await fetch("http://localhost:8080/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}

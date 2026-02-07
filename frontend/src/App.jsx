@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { getDashboard, createTask, completeTask, deleteTask } from "./api";
+import { getDashboard, createTask, completeTask, deleteTask, login, register } from "./api";
 import "./App.css";
 
-
-const USER_ID = 1;
 
 export default function App() {
   const [dash, setDash] = useState(null);
@@ -11,16 +9,57 @@ export default function App() {
   const [size, setSize] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [userId, setUserId] = useState(() => {
+    const v = localStorage.getItem("qb_userId");
+    return v ? Number(v) : null;
+  });
+
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState("login")
 
   const XP_BY_SIZE = {
     SMALL: 25,
     MEDIUM: 50,
     BIG: 100,
   }
+
   const toastIdRef = useRef(1);
 
+  async function handleAuth(e) {
+    e.preventDefault();
+
+    try {
+      const u =
+        authMode === "login"
+          ? await login(username, password)
+          : await register(username, password);
+
+      localStorage.setItem("qb_userId", String(u.id));
+      setUserId(u.id);
+
+      setUsername("");
+      setPassword("");
+
+      showToast({
+        message: authMode === "login" ? `Welcome back, ${u.username} 👋` : `Account created ✅ Welcome, ${u.username}!`,
+      });
+    } catch (err) { 
+      console.error(err); 
+      showToast({ message: err.message || "Auth failed ❌" }); 
+    }
+  }
+  
+  function logout(){
+    localStorage.removeItem("qb_userId");
+    setUserId(null);
+    setDash(null);
+    showToast({ message: "Logged out" })
+  }
+
   async function refresh() {
-    const data = await getDashboard(USER_ID);
+    if (!userId) return;
+    const data = await getDashboard(userId);
     data.tasks = sortTasks(data.tasks);
     setDash(data);
   }
@@ -47,11 +86,13 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!userId) return;
+
     let cancelled = false;
 
     (async () => {
       try {
-        const data = await getDashboard(USER_ID);
+        const data = await getDashboard(userId);
         data.tasks = sortTasks(data.tasks);
         if (!cancelled) setDash(data);
       } catch (e) {
@@ -62,18 +103,18 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userId]);
 
   async function addTask(e) {
     e.preventDefault();
 
     if (!size) {
-      showToast({ message: "Pick a quest size first 👇" });
+      showToast({ message: "Pick a quest size first" });
       return;
     }
 
     await createTask({
-      userId: USER_ID,
+      userId: userId,
       title,
       description: "",
       xp: XP_BY_SIZE[size],
@@ -116,6 +157,62 @@ export default function App() {
       next === current ? 1 : Math.min(1, (totalXp - current) / (next - current));
 
     return { level, progress, current, next };
+  }
+  
+  if (!userId) {
+    return (
+      <div className="page">
+        <div className="card authCard">
+          <h1>QuestBoard</h1>
+          <p style={{ opacity: 0.75 }}>
+            {authMode === "login" ? "Login to continue" : "Create your account"}
+          </p>
+
+          <form onSubmit={handleAuth} className="authInner">
+            <div className="fieldBlock">
+              <div className="fieldLabel">Username</div>
+              <input
+                className="textInput"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. fabio"
+                required
+              />
+            </div>
+
+            <div className="fieldBlock">
+              <div className="fieldLabel">Password</div>
+              <input
+                type="password"
+                className="textInput"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+            </div>
+
+            <div className="addRow" style={{ gap: 10 }}>
+              <button className="btn btn-primary btn-add" type="submit">
+                {authMode === "login" ? "Login" : "Create account"}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setAuthMode((m) => (m === "login" ? "register" : "login"));
+                  setPassword("");
+                }}
+              >
+                {authMode === "login" ? "Create account" : "Back to login"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   if (!dash) return <div>Loading…</div>;
@@ -203,8 +300,8 @@ export default function App() {
               Logged in as <b>{dash.username}</b>
             </span>
 
-            <button className="btn btn-ghost">
-              Profile
+            <button className="btn btn-ghost" onClick={logout}>
+              Logout
             </button>
           </div>
         </header>

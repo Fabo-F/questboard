@@ -1,5 +1,7 @@
 package ch.questboard.backend.user;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -12,6 +14,10 @@ public class User {
 
     @Column(nullable = false, unique = true)
     private String username;
+
+    @Column(nullable = false)
+    @JsonIgnore
+    private String passwordHash;
 
     @Column(nullable = false)
     private int totalXp = 0;
@@ -29,6 +35,15 @@ public class User {
     public String getUsername(){ 
         return username; 
     }
+
+    public String getPasswordHash() {
+        return passwordHash;
+    }
+
+    public void setPasswordHash(String passwordHash) {
+        this.passwordHash = passwordHash;
+    }
+
     public int getTotalXp(){ 
         return totalXp; 
     }
