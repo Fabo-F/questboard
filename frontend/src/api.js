@@ -50,3 +50,23 @@ export async function register(username, password) {
   if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
+
+export async function updateProfile(userId, { username, avatarUrl }) {
+  const res = await fetch(`http://localhost:8080/api/users/${userId}/profile`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, avatarUrl }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function changePassword(userId, currentPassword, newPassword) {
+  const res = await fetch(`${API}/api/auth/users/${userId}/password`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  if (!res.ok) throw new Error(await res.text());
+}

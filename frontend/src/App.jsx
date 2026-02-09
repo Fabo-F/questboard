@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { getDashboard, createTask, completeTask, deleteTask, login, register } from "./api";
+import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword } from "./api";
 import "./App.css";
 
 
@@ -16,7 +16,12 @@ export default function App() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [authMode, setAuthMode] = useState("login")
+  const [authMode, setAuthMode] = useState("login");
+  const [showProfile, setShowProfile] = useState(false);
+  const [avatarInput, setAvatarInput] = useState("");
+  const [profileUsername, setProfileUsername] = useState("");
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
 
   const XP_BY_SIZE = {
     SMALL: 25,
@@ -49,12 +54,69 @@ export default function App() {
       showToast({ message: err.message || "Auth failed ❌" }); 
     }
   }
+
+  // async function saveAvatar() {
+  //   try {
+  //     await updateAvatar(userId, avatarInput.trim() || null);
+  //     await refresh();
+  //     showToast({ message: "Avatar updated ✅" });
+  //     setShowProfile(false);
+  //   } catch (e) {
+  //     console.error(e);
+  //     showToast({ message: e.message || "Avatar update failed ❌" });
+  //   }
+  // }
+
+  async function saveProfile() {
+    try {
+      const updated = await updateProfile(userId, {
+        username: profileUsername.trim(),
+        avatarUrl: avatarInput.trim() || null,
+      });
+
+      setDash((prev) => (prev ? { ...prev, ...updated } : prev));
+
+      showToast({ message: "Profile saved ✅" });
+      setShowProfile(false);
+    } catch (e) {
+      console.error(e);
+      showToast({ message: e.message || "Profile update failed ❌" });
+    }
+  }
+
+  async function savePassword() {
+    try {
+      if (!currentPw || !newPw) {
+        showToast({ message: "Fill current + new password" });
+        return;
+      }
+
+      await changePassword(userId, currentPw, newPw);
+
+      setCurrentPw("");
+      setNewPw("");
+
+      showToast({ message: "Password changed 🔒" });
+    } catch (e) {
+      console.error(e);
+      showToast({ message: e.message || "Password change failed ❌" });
+    }
+  }
+
   
   function logout(){
     localStorage.removeItem("qb_userId");
     setUserId(null);
     setDash(null);
     showToast({ message: "Logged out" })
+  }
+
+  function openProfile() {
+    setProfileUsername(dash?.username || "");
+    setAvatarInput(dash?.avatarUrl || "");
+    setCurrentPw("");
+    setNewPw("");
+    setShowProfile(true);
   }
 
   async function refresh() {
@@ -94,7 +156,11 @@ export default function App() {
       try {
         const data = await getDashboard(userId);
         data.tasks = sortTasks(data.tasks);
-        if (!cancelled) setDash(data);
+        if (!cancelled) {
+          setDash(data);
+          setAvatarInput(data.avatarUrl || "");
+        }
+
       } catch (e) {
         console.error(e);
       }
@@ -288,6 +354,85 @@ export default function App() {
         </div>
       )}
 
+      {/* Profile modal */}
+      {showProfile && (
+        <div className="modalOverlay" onClick={() => setShowProfile(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalTitle">Profile</div>
+            <div className="modalText" style={{ marginBottom: 12 }}>
+              Logged in as <b>{dash.username}</b>
+            </div>
+
+            <div className="fieldBlock">
+              <div className="fieldLabel">Username</div>
+              <input
+                className="textInput"
+                value={profileUsername}
+                onChange={(e) => setProfileUsername(e.target.value)}
+                placeholder="New username"
+              />
+            </div>
+
+            <div className="fieldBlock" style={{ marginTop: 12 }}>
+              <div className="fieldLabel">Avatar image URL</div>
+              <input
+                className="textInput"
+                value={avatarInput}
+                onChange={(e) => setAvatarInput(e.target.value)}
+                placeholder="https://…"
+              />
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+                Tip: Use a direct image link (.png/.jpg). Leave empty to remove.
+              </div>
+            </div>
+
+            <hr style={{ margin: "14px 0", opacity: 0.2 }} />
+
+            <div className="fieldBlock">
+              <div className="fieldLabel">Current password</div>
+              <input
+                className="textInput"
+                type="password"
+                value={currentPw}
+                onChange={(e) => setCurrentPw(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+
+            <div className="fieldBlock" style={{ marginTop: 12 }}>
+              <div className="fieldLabel">New password</div>
+              <input
+                className="textInput"
+                type="password"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                placeholder="Min 6 chars"
+              />
+            </div>
+
+            <div className="modalFooter">
+              <button className="btn btn-danger" onClick={logout}>
+                Logout
+              </button>
+
+              <div className="modalActions">
+                <button className="btn" onClick={savePassword}>
+                  Change password
+                </button>
+
+                <button className="btn btn-ghost" onClick={() => setShowProfile(false)}>
+                  Close
+                </button>
+
+                <button className="btn btn-primary" onClick={saveProfile}>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Page */}
       <div className="page">
         <header className="header">
@@ -297,11 +442,16 @@ export default function App() {
 
           <div className="headerRight">
             <span className="headerUser">
-              Logged in as <b>{dash.username}</b>
+              <b>{dash.username}</b>
             </span>
-
-            <button className="btn btn-ghost" onClick={logout}>
-              Logout
+            <button className="avatarBtn" onClick={openProfile} title="Profile">
+              {dash.avatarUrl ? (
+                <img className="avatarImg" src={dash.avatarUrl} alt="avatar" />
+              ) : (
+                <span className="avatarFallback">
+                  {(dash.username?.[0] || "?").toUpperCase()}
+                </span>
+              )}
             </button>
           </div>
         </header>

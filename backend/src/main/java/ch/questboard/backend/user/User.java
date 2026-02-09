@@ -22,6 +22,9 @@ public class User {
     @Column(nullable = false)
     private int totalXp = 0;
 
+    @Column(nullable = true, length = 500)
+    private String avatarUrl;
+
     protected User() {}
 
     public User(String username) {
@@ -34,6 +37,10 @@ public class User {
     }
     public String getUsername(){ 
         return username; 
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getPasswordHash() {
@@ -50,5 +57,13 @@ public class User {
 
     public void addXp(int amount) {
         this.totalXp += amount;
+    }
+
+    public String getAvatarUrl() { 
+        return avatarUrl; 
+    }
+
+    public void setAvatarUrl(String avatarUrl) { 
+        this.avatarUrl = avatarUrl; 
     }
 }
