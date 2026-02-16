@@ -22,8 +22,13 @@ public class User {
     @Column(nullable = false)
     private int totalXp = 0;
 
-    @Column(nullable = true, length = 500)
-    private String avatarUrl;
+    @JsonIgnore
+    @Basic(fetch = FetchType.LAZY)
+    @Column(name = "avatar_bytes", columnDefinition = "bytea")
+    private byte[] avatarBytes;
+
+    @JsonIgnore
+    private String avatarContentType;
 
     protected User() {}
 
@@ -59,11 +64,19 @@ public class User {
         this.totalXp += amount;
     }
 
-    public String getAvatarUrl() { 
-        return avatarUrl; 
+    public byte[] getAvatarBytes() { 
+        return avatarBytes; 
     }
 
-    public void setAvatarUrl(String avatarUrl) { 
-        this.avatarUrl = avatarUrl; 
+    public void setAvatarBytes(byte[] avatarBytes) { 
+        this.avatarBytes = avatarBytes; 
+    }
+    
+    public String getAvatarContentType() { 
+        return avatarContentType; 
+    }
+
+    public void setAvatarContentType(String avatarContentType) { 
+        this.avatarContentType = avatarContentType; 
     }
 }

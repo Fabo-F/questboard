@@ -24,47 +24,36 @@ public class AuthController {
         this.passwordEncoder = passwordEncoder;
     }
 
+    // public record AuthUserResponse(Long id, String username) {}
+
     @PostMapping("/login")
-    public User login(@RequestBody LoginRequest req) {
-        String username = req.username() == null ? "" : req.username().trim();
-        String password = req.password() == null ? "" : req.password();
+    public AuthResponse login(@RequestBody LoginRequest req) {
+        User user = users.findByUsername(req.username())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        if (username.isBlank() || password.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username and password required");
-        }
-
-        User user = users.findByUsername(username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
-        if (user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "User has no password set (old account). Please register again.");
-        }
-
-        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid password");
         }
 
-        return user;
+        return new AuthResponse(
+            user.getId(),
+            user.getUsername(),
+            user.getTotalXp(),
+            user.getAvatarBytes() != null
+        );
     }
 
     @PostMapping("/register")
-    public User register(@RequestBody LoginRequest req) {
-        String username = req.username() == null ? "" : req.username().trim();
-        String password = req.password() == null ? "" : req.password();
-
-        if (username.isBlank() || password.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username and password required");
-        }
-        if (password.length() < 6) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password must be at least 6 characters");
-        }
-        if (users.findByUsername(username).isPresent()) {
+    public AuthResponse register(@RequestBody LoginRequest req) {
+        if (users.findByUsername(req.username()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already taken");
         }
 
-        User user = new User(username);
-        user.setPasswordHash(passwordEncoder.encode(password));
-        return users.save(user);
+        User u = new User(req.username());
+        u.setPasswordHash(passwordEncoder.encode(req.password()));
+        u = users.save(u);
+
+        return new AuthResponse(u.getId(), u.getUsername(), u.getTotalXp(), false);
     }
 
     @PutMapping("/users/{id}/password")

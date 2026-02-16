@@ -4,8 +4,12 @@ import ch.questboard.backend.task.Task;
 import ch.questboard.backend.task.TaskRepository;
 import ch.questboard.backend.task.TaskStatus;
 
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -44,23 +48,15 @@ public class UserController {
         int done = (int) userTasks.stream().filter(t -> t.getStatus() == TaskStatus.DONE).count();
 
         return new UserDashboardResponse(
-                user.getId(),
-                user.getUsername(),
-                user.getTotalXp(),
-                open,
-                done,
-                userTasks
+            user.getId(),
+            user.getUsername(),
+            user.getTotalXp(),
+            open,
+            done,
+            user.getAvatarBytes() != null,
+            userTasks
         );
     }
-
-    // @PatchMapping("/{id}/avatar")
-    // public User updateAvatar(@PathVariable Long id, @RequestBody AvatarRequest req) {
-    //     User u = users.findById(id)
-    //         .orElseThrow(() -> new RuntimeException("User not found"));
-
-    //     u.setAvatarUrl(req.avatarUrl());
-    //     return users.save(u);
-    // }
 
     @PatchMapping("/{id}/profile")
     public User updateProfile(@PathVariable Long id, @RequestBody UpdateProfileRequest req) {
@@ -79,10 +75,48 @@ public class UserController {
         user.setUsername(newName);
         }
 
-        if (req.avatarUrl() != null) {
-        user.setAvatarUrl(req.avatarUrl().trim());
+        return users.save(user);
+    }
+
+
+    @PostMapping(value = "/{id}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public User uploadAvatar(@PathVariable Long id, @RequestParam("file") MultipartFile file) throws Exception {
+        User u = users.findById(id).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No file");
         }
 
-        return users.save(user);
+        String ct = file.getContentType();
+        if (ct == null || !ct.startsWith("image/")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File must be an image");
+        }
+        if (file.getSize() > 5_000_000) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Max size is 5MB");
+        }
+
+        u.setAvatarBytes(file.getBytes());
+        u.setAvatarContentType(ct);
+        return users.save(u);
+    }
+
+    @GetMapping("/{id}/avatar")
+    public ResponseEntity<byte[]> getAvatar(@PathVariable Long id) {
+        User u = users.findById(id).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        if (u.getAvatarBytes() == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        MediaType mt = MediaType.parseMediaType(
+            u.getAvatarContentType() != null ? u.getAvatarContentType() : "image/png"
+        );
+
+        return ResponseEntity.ok()
+            .contentType(mt)
+            .cacheControl(CacheControl.noCache())
+            .body(u.getAvatarBytes());
     }
 }

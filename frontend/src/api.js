@@ -1,8 +1,14 @@
 const API = "http://localhost:8080";
 
+async function parseError(res) {
+  const text = await res.text();
+  return text || `HTTP ${res.status}`;
+}
+
+// ===== Dashboard / Tasks =====
 export async function getDashboard(userId) {
   const res = await fetch(`${API}/api/users/${userId}/dashboard`);
-  if (!res.ok) throw new Error("Dashboard load failed");
+  if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
 
@@ -12,25 +18,24 @@ export async function createTask(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+
+  if (!res.ok) throw new Error(await parseError(res));
   return res.json();
 }
 
 export async function completeTask(id) {
-  await fetch(`${API}/api/tasks/${id}/complete`, { method: "POST" });
+  const res = await fetch(`${API}/api/tasks/${id}/complete`, { method: "POST" });
+  if (!res.ok) throw new Error(await parseError(res));
 }
 
 export async function deleteTask(taskId) {
   const res = await fetch(`${API}/api/tasks/${taskId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) throw new Error(await parseError(res));
 }
 
-async function parseError(res) {
-  const text = await res.text();
-  return text || `HTTP ${res.status}`;
-}
-
+// ===== Auth =====
 export async function login(username, password) {
-  const res = await fetch("http://localhost:8080/api/auth/login", {
+  const res = await fetch(`${API}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
@@ -41,23 +46,13 @@ export async function login(username, password) {
 }
 
 export async function register(username, password) {
-  const res = await fetch("http://localhost:8080/api/auth/register", {
+  const res = await fetch(`${API}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
 
   if (!res.ok) throw new Error(await parseError(res));
-  return res.json();
-}
-
-export async function updateProfile(userId, { username, avatarUrl }) {
-  const res = await fetch(`http://localhost:8080/api/users/${userId}/profile`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, avatarUrl }),
-  });
-  if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
@@ -68,5 +63,38 @@ export async function changePassword(userId, currentPassword, newPassword) {
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 
+  if (!res.ok) throw new Error(await parseError(res));
+}
+
+// ===== Profile (username only now) =====
+export async function updateProfile(userId, { username }) {
+  const res = await fetch(`${API}/api/users/${userId}/profile`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
+// ===== Avatar upload/remove (multipart) =====
+export async function uploadAvatar(userId, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const res = await fetch(`${API}/api/users/${userId}/avatar`, {
+    method: "POST",
+    body: fd,
+  });
+
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteAvatar(userId) {
+  const res = await fetch(`${API}/api/users/${userId}/avatar`, {
+    method: "DELETE",
+  });
   if (!res.ok) throw new Error(await res.text());
 }

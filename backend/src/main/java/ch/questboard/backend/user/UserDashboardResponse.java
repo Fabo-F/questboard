@@ -7,8 +7,8 @@ public record UserDashboardResponse(
     Long id,
     String username,
     int totalXp,
-    int openTasks,
-    int doneTasks,
+    int openCount,
+    int doneCount,
+    boolean hasAvatar,
     List<Task> tasks
-)
-{}
+) {}
