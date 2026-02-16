@@ -1,13 +1,59 @@
 import { useEffect, useState, useRef } from "react";
-import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword, uploadAvatar, deleteAvatar } from "./api";
+import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword, uploadAvatar, deleteAvatar,getProjects, createProject, getProjectTasks } from "./api";
 import "./App.css";
 import { FiEdit } from "react-icons/fi";
 
 
+async function compressAvatar(file, opts = {}) {
+  const {
+    size = 256,
+    quality = 0.82,
+    mime = "image/jpeg",
+  } = opts;
+
+  const bitmap = await createImageBitmap(file);
+
+  const srcW = bitmap.width;
+  const srcH = bitmap.height;
+
+  // center-crop to square
+  const side = Math.min(srcW, srcH);
+  const sx = Math.floor((srcW - side) / 2);
+  const sy = Math.floor((srcH - side) / 2);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+
+  const ctx = canvas.getContext("2d");
+
+  // JPEG background (avoid black for transparent PNGs)
+  if (mime === "image/jpeg") {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+  }
+
+  ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size);
+
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, mime, quality)
+  );
+
+  if (!blob) throw new Error("Could not compress image");
+
+  const ext = mime === "image/png" ? "png" : "jpg";
+  return new File([blob], `avatar.${ext}`, { type: mime });
+}
+
+
 export default function App() {
   const [dash, setDash] = useState(null);
+  const [page, setPage] = useState("home");
+
+  const [showCreateTask, setShowCreateTask] = useState(false);
   const [title, setTitle] = useState("");
   const [size, setSize] = useState(null);
+  
   const [toasts, setToasts] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [userId, setUserId] = useState(() => {
@@ -25,8 +71,19 @@ export default function App() {
   const [newPw, setNewPw] = useState("");
 
   const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [dragActive, setDragActive] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(0);
   const [avatarOk, setAvatarOk] = useState(true);
+
+  const [projects, setProjects] = useState([]);
+  const [activeProject, setActiveProject] = useState(null);
+
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [projectDesc, setProjectDesc] = useState("");
+
+  const [projectTasks, setProjectTasks] = useState([]);
 
   const XP_BY_SIZE = {
     SMALL: 25,
@@ -44,6 +101,128 @@ export default function App() {
     localStorage.setItem("qb_theme", theme);
   }, [theme]);
 
+  function handleFile(file) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      showToast({ message: "Only images allowed 🖼️" });
+      return;
+    }
+
+    if (file.size > 5_000_000) {
+      showToast({ message: "Max 5MB image" });
+      return;
+    }
+
+    setAvatarFile(file);
+
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreview(reader.result);
+    reader.readAsDataURL(file);
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    handleFile(file);
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    setDragActive(true);
+  }
+
+  function onDragLeave() {
+    setDragActive(false);
+  }
+
+  async function handleCreateProject(e) {
+    e.preventDefault();
+    try {
+      const p = await createProject({
+        userId,
+        title: projectTitle.trim(),
+        description: projectDesc.trim(),
+      });
+
+      setProjects(prev => [p, ...prev]);
+      setShowCreateProject(false);
+      setProjectTitle("");
+      setProjectDesc("");
+
+      showToast({ message: "Project created ✅" });
+    } catch (e2) {
+      console.error(e2);
+      showToast({ message: e2.message || "Create failed ❌" });
+    }
+  }
+
+  async function handleCreateTask(e) {
+    e.preventDefault();
+
+    if (!size) {
+      showToast({ message: "Pick a quest size first" });
+      return;
+    }
+
+    try {
+      const t = await createTask({
+        userId,
+        projectId: activeProject.id,
+        title: title.trim(),
+        size: size.trim(),
+        xp: XP_BY_SIZE[size],
+      });
+      setDash(prev => prev ? { ...prev, tasks: [t, ...prev.tasks] } : prev);
+
+      setProjectTasks(prev => [t, ...prev]);
+      setShowCreateTask(false);
+      setTitle("");
+      setSize(null);
+
+      showToast({ message: "Quest created ✅" });
+    } catch (e2) {
+      console.error(e2);
+      showToast({ message: e2.message || "Create failed ❌" });
+    }
+  }
+
+  async function handleDeleteTask() {
+    if (!confirmDelete) return;
+    const { id } = confirmDelete;
+
+    setConfirmDelete(null);
+
+    setDash((prev) =>
+      prev ? { ...prev, tasks: (prev.tasks || []).filter((t) => t.id !== id) } : prev
+    );
+
+    setProjectTasks((prev) => (prev || []).filter((t) => t.id !== id));
+
+    try {
+      await deleteTask(id);
+      showToast({ message: "Quest deleted 🗑️" });
+    } catch (err) {
+      console.error(err);
+      showToast({ message: err.message || "Delete failed ❌" });
+      await refresh();
+    }
+  }
+
+  async function openProject(p) {
+    setActiveProject(p);
+    setPage("project");
+
+    try {
+      const tasks = await getProjectTasks(p.id);
+      setProjectTasks(sortTasks(tasks));
+    } catch (e) {
+      console.error(e);
+      showToast({ message: e.message || "Failed to load tasks ❌" });
+    }
+  }
+
   async function handleAuth(e) {
     e.preventDefault();
 
@@ -58,6 +237,7 @@ export default function App() {
 
       setUsername("");
       setPassword("");
+      setPage("home")
 
       showToast({
         message: authMode === "login" ? `Welcome back, ${u.username} 👋` : `Account created ✅ Welcome, ${u.username}!`,
@@ -68,17 +248,51 @@ export default function App() {
     }
   }
 
-  async function saveProfile() {
+  async function saveEditProfile() {
     try {
-      const updated = await updateProfile(userId, { username: profileUsername.trim() });
+      // 1) username
+      const newName = profileUsername.trim();
+      if (newName && newName !== dash.username) {
+        const updated = await updateProfile(userId, { username: newName });
+        setDash((prev) => (prev ? { ...prev, ...updated } : prev));
+      }
 
-      setDash((prev) => (prev ? { ...prev, ...updated } : prev));
+      // 2) avatar: compress + upload if file selected
+      if (avatarFile) {
+        const compressed = await compressAvatar(avatarFile, {
+          size: 256,
+          quality: 0.82,
+          mime: "image/jpeg",
+        });
+        setDash((prev) => (prev ? { ...prev, ...compressed } : prev));
 
-      showToast({ message: "Profile saved ✅" });
+        await uploadAvatar(userId, compressed);
+
+        setAvatarFile(null);
+        setAvatarPreview(null);
+        
+        setAvatarOk(true);
+        setAvatarVersion((v) => v + 1);
+      }
+
+      // 3) password: only if both filled
+      if (currentPw && newPw) {
+        await changePassword(userId, currentPw, newPw);
+        setCurrentPw("");
+        setNewPw("");
+      }
+
+      await refresh();
+
+      showToast({ message: "Saved ✅" });
+
+      // close everything after success
+      setShowEditProfile(false);
       setShowProfile(false);
+      await refresh()
     } catch (e) {
       console.error(e);
-      showToast({ message: e.message || "Profile update failed ❌" });
+      showToast({ message: e.message || "Save failed ❌" });
     }
   }
 
@@ -159,6 +373,9 @@ export default function App() {
         if (!cancelled) {
           setDash(data);
 
+          const projs = await getProjects(userId);
+          setProjects(projs);
+
           setProfileUsername(data.username || "");
           setCurrentPw("");
           setNewPw("");
@@ -178,26 +395,28 @@ export default function App() {
     };
   }, [userId]);
 
-  async function addTask(e) {
-    e.preventDefault();
+  // async function addTask(e) {
+  //   e.preventDefault();
 
-    if (!size) {
-      showToast({ message: "Pick a quest size first" });
-      return;
-    }
+  //   if (!size) {
+  //     showToast({ message: "Pick a quest size first" });
+  //     return;
+  //   }
 
-    await createTask({
-      userId: userId,
-      title,
-      description: "",
-      xp: XP_BY_SIZE[size],
-    });
+  //   const created = await createTask({
+  //     userId,
+  //     projectId: activeProject.id,
+  //     title,
+  //     description: "",
+  //     xp: XP_BY_SIZE[size],
+  //   });
+  //   setDash(prev => prev ? { ...prev, tasks: [created, ...prev.tasks] } : prev);
 
-    setTitle("");
-    setSize(null);
-    await refresh();
-    showToast({message: "Quest created ✅"});
-  }
+  //   setTitle("");
+  //   setSize(null);
+  //   await refresh();
+  //   showToast({message: "Quest created ✅"});
+  // }
 
   async function complete(id) {
     await completeTask(id);
@@ -230,41 +449,6 @@ export default function App() {
       next === current ? 1 : Math.min(1, (totalXp - current) / (next - current));
 
     return { level, progress, current, next };
-  }
-
-  async function handleUploadAvatar() {
-    try {
-      if (!avatarFile) {
-        showToast({ message: "Pick an image first 🖼️" });
-        return;
-      }
-
-      await uploadAvatar(userId, avatarFile);
-      setAvatarFile(null);
-      setAvatarOk(true);
-      setAvatarVersion((v) => v + 1);
-
-      await refresh();
-      showToast({ message: "Avatar uploaded ✅" });
-    } catch (e) {
-      console.error(e);
-      showToast({ message: e.message || "Upload failed ❌" });
-    }
-  }
-
-  async function handleRemoveAvatar() {
-    try {
-      await deleteAvatar(userId);
-
-      setAvatarOk(false);
-      setAvatarVersion((v) => v + 1);
-
-      await refresh();
-      showToast({ message: "Avatar removed 🗑️" });
-    } catch (e) {
-      console.error(e);
-      showToast({ message: e.message || "Remove failed ❌" });
-    }
   }
   
   if (!userId) {
@@ -327,13 +511,12 @@ export default function App() {
 
   const levelInfo = getLevel(dash.totalXp);
   
+  const welcomeText =
+    authMode === "login"
+      ? `Welcome back ${dash.username} 👋`
+      : `Welcome ${dash.username}`;
+  
   const AVATAR_URL = `http://localhost:8080/api/users/${userId}/avatar`;
-
-  {dash.hasAvatar ? (
-    <img className="avatarImg" src={AVATAR_URL} alt="avatar" />
-  ) : (
-    <span className="avatarFallback">{dash.username[0].toUpperCase()}</span>
-  )}
 
 
   return (
@@ -370,6 +553,103 @@ export default function App() {
           </div>
         ))}
       </div>
+      
+      {/* Create Project */}
+      {showCreateProject && (
+        <div className="modalOverlay" onClick={() => setShowCreateProject(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalTitle">New project</div>
+
+            <form onSubmit={handleCreateProject}>
+              <div className="fieldBlock" style={{ marginTop: 12 }}>
+                <div className="fieldLabel">Title</div>
+                <input
+                  className="textInput"
+                  value={projectTitle}
+                  onChange={(e) => setProjectTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="fieldBlock" style={{ marginTop: 12 }}>
+                <div className="fieldLabel">Description</div>
+                <textarea
+                  className="textInput"
+                  rows={4}
+                  value={projectDesc}
+                  onChange={(e) => setProjectDesc(e.target.value)}
+                  placeholder="Optional…"
+                />
+              </div>
+
+              <div className="modalFooter" style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowCreateProject(false)}
+                >
+                  Cancel
+                </button>
+
+                <button className="btn btn-primary" type="submit">
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Task */}
+      {showCreateTask && (
+        <div className="modalOverlay" onClick={() => setShowCreateTask(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalTitle">New project</div>
+
+            <form onSubmit={handleCreateTask}>
+              <div className="fieldBlock" style={{ marginTop: 12 }}>
+                <div className="fieldLabel">Title</div>
+                <input
+                  className="textInput"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              
+              <div className="fieldLabel">Quest size</div>
+              <div className="sizeSelector">
+                {["SMALL", "MEDIUM", "BIG"].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`sizeBtn btn btn-ghost ${size === s ? "active" : ""}`}
+                    onClick={() => setSize(s)}
+                  >
+                    <span className="sizeName">{s}</span>
+                    <span className="sizeXp">{XP_BY_SIZE[s]} XP</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="modalFooter" style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowCreateTask(false)}
+                >
+                  Cancel
+                </button>
+
+                <button className="btn btn-primary" type="submit">
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Confirm delete modal */}
       {confirmDelete && (
@@ -388,16 +668,7 @@ export default function App() {
                 Cancel
               </button>
 
-              <button
-                className="btn btn-danger"
-                onClick={async () => {
-                  const { id } = confirmDelete;
-                  setConfirmDelete(null);
-                  await deleteTask(id);
-                  await refresh();
-                  showToast({ message: "Quest deleted 🗑️" });
-                }}
-              >
+              <button className="btn btn-danger" onClick={handleDeleteTask}>
                 Delete
               </button>
             </div>
@@ -490,25 +761,57 @@ export default function App() {
             <div className="fieldBlock" style={{ marginTop: 12 }}>
               <div className="fieldLabel">Avatar</div>
 
-              <input
-                className="textInput"
-                type="file"
-                accept="image/*"
-                onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
-              />
+              <div
+                className={`uploadZone ${dragActive ? "active" : ""}`}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onClick={() => document.getElementById("avatarInput").click()}
+              >
+                {avatarPreview ? (
+                  <img src={avatarPreview} className="uploadPreview" />
+                ) : (
+                  <div className="uploadHint">
+                    Drag image here or click to upload
+                  </div>
+                )}
+
+                <input
+                  id="avatarInput"
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => handleFile(e.target.files?.[0])}
+                />
+              </div>
+              
+              {avatarFile && (
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                  New avatar selected — click <b>Save</b> to apply.
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-                <button type="button" className="btn btn-primary" onClick={handleUploadAvatar}>
-                  Upload
+                <button
+                  className="btn btn-danger"
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await deleteAvatar(userId);
+                      setAvatarOk(false);
+                      setAvatarVersion((v) => v + 1);
+                      setAvatarFile(null);
+                      setAvatarPreview(null);
+                      await refresh();
+                      showToast({ message: "Avatar removed 🗑️" });
+                    } catch (e) {
+                      console.error(e);
+                      showToast({ message: e.message || "Remove failed ❌" });
+                    }
+                  }}
+                >
+                  Remove avatar
                 </button>
-
-                <button type="button" className="btn btn-danger" onClick={handleRemoveAvatar}>
-                  Remove
-                </button>
-              </div>
-
-              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
-                JPG/PNG recommended. Max 2MB.
               </div>
             </div>
 
@@ -549,7 +852,7 @@ export default function App() {
                 <button className="btn btn-ghost" onClick={() => setShowEditProfile(false)}>
                   Cancel
                 </button>
-                <button className="btn btn-primary" onClick={saveProfile}>
+                <button className="btn btn-primary" onClick={saveEditProfile}>
                   Save
                 </button>
               </div>
@@ -558,131 +861,197 @@ export default function App() {
         </div>
       )}
 
-      {/* Page */}
-      <div className="page">
-        <header className="header">
-          <div className="headerLeft">
-            QuestBoard
-          </div>
-
-          <div className="headerRight">
-            <span className="headerUser">
-              <b>{dash.username}</b>
-            </span>
-            <button className="avatarBtn" onClick={() => setShowProfile(true)} title="Profile">
-              {avatarOk ? (
-                <img
-                  className="avatarImg"
-                  src={`${AVATAR_URL}?v=${avatarVersion}`}
-                  alt="avatar"
-                  onError={() => setAvatarOk(false)}
-                />
-              ) : (
-                <span className="avatarFallback">
-                  {(dash.username?.[0] || "?").toUpperCase()}
-                </span>
-              )}
-            </button>
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
-          </div>
-        </header>
-
-        <div className="card">
-          <div className="panel">
-            <div className="levelBlock">
-              <div>Level: <b>{levelInfo.level}</b></div>
-
-              <div className="progressBar">
-                <div
-                  className="progressFill"
-                  style={{ width: `${levelInfo.progress * 100}%` }}
-                />
-              </div>
-
-              <div className="levelHint">
-                {levelInfo.next - dash.totalXp} XP to next level
-              </div>
+      {/* Home */}
+      {page == "home" && (
+        <div className="page">
+          <header className="header">
+            <div className="headerLeft">
+              QuestBoard
             </div>
 
-            <form onSubmit={addTask} className="taskFormCol">
-              <div className="fieldBlock">
-                <div className="fieldLabel">Title</div>
-
-                <input
-                  className="textInput"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="New quest"
-                  required
-                />
-              </div>
-
-              <div className="sizeRow">
-                <span className="fieldLabel">Quest size</span>
-
-                <div className="sizeSelector">
-                  {["SMALL", "MEDIUM", "BIG"].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      className={`sizeBtn ${size === s ? "active" : ""}`}
-                      onClick={() => setSize(s)}
-                    >
-                      <span className="sizeName">{s}</span>
-                      <span className="sizeXp">{XP_BY_SIZE[s]} XP</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="addRow">
-                <button
-                  className="btn btn-primary btn-add"
-                  type="submit"
-                  disabled={!title.trim() || !size}
-                >
-                  Add
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <div className="tasks card">
-          <h2 className="sectionTitle">Quests</h2>
-
-          {dash.tasks.map((t) => (
-            <div key={t.id} className="taskRow">
-              <div className="taskInfo">
-                <div className="taskTitle">{t.title}</div>
-                <div className="taskMeta">
-                  {t.status} • {t.xp} XP
-                </div>
-              </div>
-
-              {t.status !== "DONE" && (
-                <button className="btn btn-ghost" onClick={() => complete(t.id)}>
-                  Complete
-                </button>
-              )}
-
+            <div className="headerRight">
+              <span className="headerUser">
+                <b>{dash.username}</b>
+              </span>
+              <button className="avatarBtn" onClick={() => setShowProfile(true)} title="Profile">
+                {avatarOk ? (
+                  <img
+                    className="avatarImg"
+                    src={`${AVATAR_URL}?v=${avatarVersion}`}
+                    alt="avatar"
+                    onError={() => setAvatarOk(false)}
+                  />
+                ) : (
+                  <span className="avatarFallback">
+                    {(dash.username?.[0] || "?").toUpperCase()}
+                  </span>
+                )}
+              </button>
               <button
-                className="btn btn-danger"
-                onClick={() =>
-                  setConfirmDelete({ id: t.id, title: t.title })
-                }
-              >
-                Delete
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
+                {theme === "dark" ? "Light" : "Dark"}
               </button>
             </div>
-          ))}
+          </header>
+
+          <div className="card">
+            <div className="panel">
+              <div>
+                <h2 className="sectionTitle">{welcomeText}</h2>
+              </div>
+              <div className="levelBlock">
+                <div>Level: <b>{levelInfo.level}</b></div>
+
+                <div className="progressBar">
+                  <div
+                    className="progressFill"
+                    style={{ width: `${levelInfo.progress * 100}%` }}
+                  />
+                </div>
+
+                <div className="levelHint">
+                  {levelInfo.next - dash.totalXp} XP to next level
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="tasks card">
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <h2 className="sectionTitle">Projects</h2>
+              <button className="btn btn-primary" onClick={() => setShowCreateProject(true)}>
+                + New
+              </button>
+            </div>
+
+            {projects.length === 0 ? (
+              <div style={{ opacity: 0.7, marginTop: 10 }}>No projects yet.</div>
+            ) : (
+              projects.map((p) => (
+                <div
+                  key={p.id}
+                  className="taskRow"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => openProject(p)}
+                >
+                  <div className="taskInfo">
+                    <div className="taskTitle">{p.title}</div>
+                    <div className="taskMeta">{p.description || "No description"}</div>
+                  </div>
+
+                  <button className="btn btn-ghost" type="button">
+                    Open
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Project */}
+      {page == "project" && (
+        <div className="page">
+          <header className="header">
+            <div className="headerLeft">
+              QuestBoard
+            </div>
+
+            <div className="headerRight">
+              <span className="headerUser">
+                <b>{dash.username}</b>
+              </span>
+              <button className="avatarBtn" onClick={() => setShowProfile(true)} title="Profile">
+                {avatarOk ? (
+                  <img
+                    className="avatarImg"
+                    src={`${AVATAR_URL}?v=${avatarVersion}`}
+                    alt="avatar"
+                    onError={() => setAvatarOk(false)}
+                  />
+                ) : (
+                  <span className="avatarFallback">
+                    {(dash.username?.[0] || "?").toUpperCase()}
+                  </span>
+                )}
+              </button>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
+                {theme === "dark" ? "Light" : "Dark"}
+              </button>
+            </div>
+          </header>
+
+          <div className="card">
+            <div className="panel">
+              <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{activeProject?.title}</div>
+                  <div style={{ opacity: 0.7 }}>{activeProject?.description}</div>
+                </div>
+
+                <button className="btn btn-ghost" onClick={() => setPage("home")}>
+                  ← Back
+                </button>
+              </div>
+              <div className="levelBlock">
+                <div>Level: <b>{levelInfo.level}</b></div>
+
+                <div className="progressBar">
+                  <div
+                    className="progressFill"
+                    style={{ width: `${levelInfo.progress * 100}%` }}
+                  />
+                </div>
+
+                <div className="levelHint">
+                  {levelInfo.next - dash.totalXp} XP to next level
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="tasks card">
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <h2 className="sectionTitle">Quests</h2>
+                <button className="btn btn-primary" onClick={() => setShowCreateTask(true)}>
+                  + New
+                </button>
+            </div>
+
+            {projectTasks.map((t) => (
+              <div key={t.id} className="taskRow">
+                <div className="taskInfo">
+                  <div className="taskTitle">{t.title}</div>
+                  <div className="taskMeta">
+                    {t.status} • {t.xp} XP
+                  </div>
+                </div>
+
+                {t.status !== "DONE" && (
+                  <button className="btn btn-ghost" onClick={() => complete(t.id)}>
+                    Complete
+                  </button>
+                )}
+
+                <button
+                  className="btn btn-danger"
+                  onClick={() =>
+                    setConfirmDelete({ id: t.id, title: t.title })
+                  }
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
     </>
   );
 }

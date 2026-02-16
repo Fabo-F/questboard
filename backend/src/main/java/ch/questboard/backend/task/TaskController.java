@@ -1,6 +1,9 @@
 package ch.questboard.backend.task;
 
 import org.springframework.web.bind.annotation.*;
+
+import ch.questboard.backend.project.ProjectRepository;
+
 import java.util.List;
 
 @CrossOrigin(origins = "http://localhost:5173")
@@ -9,12 +12,13 @@ import java.util.List;
 public class TaskController {
     
     private final TaskRepository repo;
-
     private final TaskService taskService;
+    private final ProjectRepository projectRepo;
 
-    public TaskController(TaskRepository repo, TaskService taskService){
+    public TaskController(TaskRepository repo, TaskService taskService, ProjectRepository projectRepo){
         this.repo = repo;
         this.taskService = taskService;
+        this.projectRepo = projectRepo;
     }
 
     @GetMapping
@@ -29,12 +33,17 @@ public class TaskController {
 
     @PostMapping
     public Task create(@RequestBody @jakarta.validation.Valid CreateTaskRequest req){
+        var project = projectRepo.findById(req.projectId()).orElseThrow();
+
         Task task = new Task(req.userId(), req.title(), req.description(), req.xp());
+        task.setProject(project);
+
         return repo.save(task);
     }
     
     public record CreateTaskRequest(
         Long userId,
+        Long projectId,
         
         @jakarta.validation.constraints.NotBlank
         String title,
@@ -55,5 +64,10 @@ public class TaskController {
     @DeleteMapping("/{id}")
     public void delete(@PathVariable Long id) {
         repo.deleteById(id);
+    }
+
+    @GetMapping("/project/{projectId}")
+    public List<Task> byProject(@PathVariable Long projectId) {
+        return repo.findByProjectId(projectId);
     }
 }

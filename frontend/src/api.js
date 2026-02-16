@@ -98,3 +98,25 @@ export async function deleteAvatar(userId) {
   });
   if (!res.ok) throw new Error(await res.text());
 }
+
+export async function getProjects(userId) {
+  const res = await fetch(`${API}/api/projects/user/${userId}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function createProject(payload) {
+  const res = await fetch(`${API}/api/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getProjectTasks(projectId) {
+  const res = await fetch(`${API}/api/tasks/project/${projectId}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

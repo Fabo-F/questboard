@@ -3,6 +3,8 @@ package ch.questboard.backend.task;
 import jakarta.persistence.*;
 import java.time.Instant;
 
+import ch.questboard.backend.project.Project;
+
 @Entity
 @Table(name = "tasks")
 public class Task {
@@ -13,6 +15,10 @@ public class Task {
     
     @Column(nullable = false)
     private Long userId;
+
+    @ManyToOne
+    @JoinColumn(name = "project_id", nullable = false)
+    private Project project;
 
     @Column(nullable = false)
     private String title;
@@ -49,6 +55,14 @@ public class Task {
 
     public Long getUserId(){
         return userId;
+    }
+
+    public Project getProject(){
+        return project;
+    }
+
+    public void setProject(Project project){
+        this.project = project;
     }
 
     public String getTitle(){

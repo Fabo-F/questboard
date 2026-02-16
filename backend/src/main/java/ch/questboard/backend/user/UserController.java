@@ -119,4 +119,13 @@ public class UserController {
             .cacheControl(CacheControl.noCache())
             .body(u.getAvatarBytes());
     }
+
+    @DeleteMapping("/{id}/avatar")
+    public ResponseEntity<Void> deleteAvatar(@PathVariable Long id) {
+        User u = users.findById(id).orElseThrow();
+        u.setAvatarBytes(null);
+        u.setAvatarContentType(null);
+        users.save(u);
+        return ResponseEntity.noContent().build();
+    }
 }

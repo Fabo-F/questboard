@@ -494,8 +494,43 @@ body{
   padding: 18px;
 }
 
-/* ===== Small helpers (optional) ===== */
+/* ===== Small helpers ===== */
 .profileStatNumber{
   font-weight: 600;
   font-size: 18px;
+}
+
+/* ===== Image upload ===== */
+.uploadZone {
+  border: 2px dashed var(--stroke);
+  border-radius: 14px;
+  padding: 18px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgba(0,0,0,0.03);
+  transition: all 0.15s ease;
+  min-height: 120px;
+}
+
+.uploadZone:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.uploadZone.active {
+  border-color: var(--primary);
+  background: rgba(59,130,246,0.10);
+}
+
+.uploadHint {
+  font-size: 13px;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.uploadPreview {
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 12px;
+  object-fit: cover;
 }
