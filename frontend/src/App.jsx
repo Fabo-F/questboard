@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword, uploadAvatar, deleteAvatar,getProjects, createProject, getProjectTasks, deleteProject } from "./api";
 import "./App.css";
-import { FiEdit } from "react-icons/fi";
+import { FiEdit, FiEye, FiEyeOff } from "react-icons/fi";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -177,6 +177,7 @@ export default function App() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [showProfile, setShowProfile] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -233,6 +234,13 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = () => setAvatarPreview(reader.result);
     reader.readAsDataURL(file);
+  }
+
+  async function refreshProjects() {
+    if (!userId) return;
+    const projs = await getProjects(userId);
+    console.log("projects from API:", projs);
+    setProjects(projs);
   }
 
   function onDrop(e) {
@@ -301,6 +309,7 @@ export default function App() {
       setShowCreateTask(false);
       setTitle("");
       setSize(null);
+      await refreshProjects();
 
       showToast({ message: "Quest created ✅" });
     } catch (e2) {
@@ -330,7 +339,7 @@ export default function App() {
         prev.findIndex(t => t.id === over.id)
       );
 
-      const order = loadTaskOrder(activeProject.id);
+      // const order = loadTaskOrder(activeProject.id);
       const openIds = next.filter(t => t.status !== "DONE").map(t => t.id);
       const doneIds = next.filter(t => t.status === "DONE").map(t => t.id);
 
@@ -340,30 +349,30 @@ export default function App() {
     });
   }
 
-  function orderKey(projectId) {
-    return `qb_taskOrder_${projectId}`;
-  }
+  // function orderKey(projectId) {
+  //   return `qb_taskOrder_${projectId}`;
+  // }
 
-  function applySavedOrder(tasks, savedIds) {
-    if (!Array.isArray(savedIds) || savedIds.length === 0) return tasks;
+  // function applySavedOrder(tasks, savedIds) {
+  //   if (!Array.isArray(savedIds) || savedIds.length === 0) return tasks;
 
-    const map = new Map(tasks.map(t => [t.id, t]));
-    const ordered = [];
+  //   const map = new Map(tasks.map(t => [t.id, t]));
+  //   const ordered = [];
 
-    for (const id of savedIds) {
-      const t = map.get(id);
-      if (t) {
-        ordered.push(t);
-        map.delete(id);
-      }
-    }
+  //   for (const id of savedIds) {
+  //     const t = map.get(id);
+  //     if (t) {
+  //       ordered.push(t);
+  //       map.delete(id);
+  //     }
+  //   }
 
-    for (const t of tasks) {
-      if (map.has(t.id)) ordered.push(t);
-    }
+  //   for (const t of tasks) {
+  //     if (map.has(t.id)) ordered.push(t);
+  //   }
 
-    return ordered;
-  }
+  //   return ordered;
+  // }
 
   async function openProject(p) {
     setActiveProject(p);
@@ -402,6 +411,7 @@ export default function App() {
     try {
       if (type === "task") {
         await deleteTask(id);
+        await refreshProjects();
         showToast({ message: "Quest deleted 🗑️" });
       } else {
         await deleteProject(id);
@@ -617,6 +627,7 @@ export default function App() {
 
     try {
       await completeTask(id);
+      await refreshProjects();
       showToast({ message: "Quest completed 🎉" });
       await refresh();
     } catch (e) {
@@ -676,15 +687,26 @@ export default function App() {
 
             <div className="fieldBlock">
               <div className="fieldLabel">Password</div>
-              <input
-                type="password"
-                className="textInput"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
+              
+              <div className="inputWithBtn">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="textInput"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  className="pwToggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FiEye size={16} /> : <FiEyeOff size={16} />}
+                </button>
+              </div>
             </div>
 
             <div className="addRow" style={{ gap: 10 }}>
@@ -1131,22 +1153,49 @@ export default function App() {
             {projects.length === 0 ? (
               <div style={{ opacity: 0.7, marginTop: 10 }}>No projects yet.</div>
             ) : (
-              projects.map((p) => (
-                <div
-                  key={p.id}
-                  className="taskRow"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => openProject(p)}
-                >
-                  <div className="taskInfo">
-                    <div className="taskTitle">{p.title}</div>
-                    <div className="taskMeta">{p.description || "No description"}</div>
+              projects.map((p) => {
+                const pct = p.totalTasks
+                  ? Math.round(((p.totalTasks - p.openTasks) / p.totalTasks) * 100)
+                  : 0;
+
+                return (
+                  <div
+                    key={p.id}
+                    className="taskRow projectRow"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openProject(p)}
+                  >
+                    <div className="taskInfo" style={{ flex: 1 }}>
+                      <div className="taskTitle">{p.title}</div>
+                      <div className="taskMeta">
+                        {p.openTasks ?? 0} open • {p.totalTasks ?? 0} total
+                      </div>
+                    </div>
+
+                    <div className="projectRight" onClick={(e) => e.stopPropagation()}>
+                      <div className="projectProgressWrap">
+                        <div className="projectPct">{pct}%</div>
+
+                        <div className="projectBar">
+                          <div
+                            className={`projectBarFill ${pct === 100 ? "isDone" : ""}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        className="btn btn-danger"
+                        onClick={() =>
+                          setConfirmDelete({ type: "project", id: p.id, title: p.title })
+                        }
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                  <button className="btn btn-danger" onClick={(e) => {e.stopPropagation(); setConfirmDelete({ type: "project", id: p.id, title: p.title })}}>
-                    Delete
-                  </button>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -1195,7 +1244,10 @@ export default function App() {
                   <div style={{ opacity: 0.7 }}>{activeProject?.description}</div>
                 </div>
 
-                <button className="btn btn-ghost" onClick={() => setPage("home")}>
+                <button className="btn btn-ghost" onClick={async () => {
+                  setPage("home");
+                  await refreshProjects();
+                  }}>
                   ← Back
                 </button>
               </div>

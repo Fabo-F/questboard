@@ -248,6 +248,7 @@ body{
   display:flex;
   flex-direction:column;
   gap: 6px;
+  margin-top: 20px;
 }
 
 .fieldLabel{
@@ -324,6 +325,51 @@ body{
   display:flex;
   justify-content:center;
   margin-top: 6px;
+}
+
+.inputWithBtn{
+  position: relative;
+  width: 100%;
+}
+
+.inputWithBtn .textInput{
+  padding-right: 52px;
+}
+
+.pwToggle{
+  position: absolute;
+  right: 0px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  height: 100%;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+
+  border: 1px solid var(--stroke);
+  background: rgba(0,0,0,0.03);
+  color: var(--text);
+
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+
+  transition: filter .12s ease, background .12s ease, transform .06s ease;
+  
+  display: grid;
+  place-items: center;
+}
+
+.pwToggle:hover{
+  filter: brightness(0.98);
+}
+
+.pwToggle:active{
+  transform: translateY(-50%) scale(0.98);
+}
+
+:root[data-theme="dark"] .pwToggle{
+  background: rgba(255,255,255,0.06);
 }
 
 /* modern button base */
@@ -541,4 +587,71 @@ body{
   max-height: 160px;
   border-radius: 12px;
   object-fit: cover;
+}
+
+/* Autofil fix */
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0px 1000px var(--inputBg) inset;
+  box-shadow: 0 0 0px 1000px var(--inputBg) inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Project Progress Bar */
+
+.projectRow{
+  align-items: center;
+}
+
+.projectRight{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.projectProgressWrap{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 170px;
+  justify-content: flex-end;
+}
+
+.projectPct{
+  font-size: 12px;
+  opacity: 0.75;
+  width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectBar{
+  width: 150px;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(17,24,39,0.10);
+}
+
+:root[data-theme="dark"] .projectBar{
+  background: rgba(255,255,255,0.12);
+}
+
+.projectBarFill{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--primary);
+  opacity: 0.8;
+  transition: width .25s ease;
+}
+
+.projectBarFill.isDone{
+  background: #22c55e;
+  opacity: 0.95;
 }
