@@ -1,29 +1,24 @@
 package ch.questboard.backend.project;
 
-import ch.questboard.backend.user.User;
-import jakarta.transaction.Transactional;
-import ch.questboard.backend.user.UserRepository;
+import ch.questboard.backend.task.TaskRepository;
 import org.springframework.stereotype.Service;
+
+import jakarta.transaction.Transactional;
 
 @Service
 public class ProjectService {
-    
-    private final ProjectRepository projects;
-    private final UserRepository users;
 
-    public ProjectService(ProjectRepository projects, UserRepository users){
+    private final ProjectRepository projects;
+    private final TaskRepository tasks;
+
+    public ProjectService(ProjectRepository projects, TaskRepository tasks) {
         this.projects = projects;
-        this.users = users;
+        this.tasks = tasks;
     }
 
     @Transactional
-    public Project completeProject(Long projectId){
-        Project project = projects.findById(projectId).orElseThrow();
-        User user = users.findById(project.getUserId()).orElseThrow();
-
-        users.save(user);
-
-        return projects.save(project);
+    public void deleteProject(Long projectId) {
+        tasks.deleteByProjectId(projectId);
+        projects.deleteById(projectId);
     }
-
 }

@@ -1,7 +1,11 @@
 import { useEffect, useState, useRef } from "react";
-import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword, uploadAvatar, deleteAvatar,getProjects, createProject, getProjectTasks } from "./api";
+import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword, uploadAvatar, deleteAvatar,getProjects, createProject, getProjectTasks, deleteProject } from "./api";
 import "./App.css";
 import { FiEdit } from "react-icons/fi";
+import { DndContext, closestCenter } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
 
 
 async function compressAvatar(file, opts = {}) {
@@ -16,7 +20,6 @@ async function compressAvatar(file, opts = {}) {
   const srcW = bitmap.width;
   const srcH = bitmap.height;
 
-  // center-crop to square
   const side = Math.min(srcW, srcH);
   const sx = Math.floor((srcW - side) / 2);
   const sy = Math.floor((srcH - side) / 2);
@@ -27,7 +30,6 @@ async function compressAvatar(file, opts = {}) {
 
   const ctx = canvas.getContext("2d");
 
-  // JPEG background (avoid black for transparent PNGs)
   if (mime === "image/jpeg") {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, size, size);
@@ -43,6 +45,118 @@ async function compressAvatar(file, opts = {}) {
 
   const ext = mime === "image/png" ? "png" : "jpg";
   return new File([blob], `avatar.${ext}`, { type: mime });
+}
+
+function SortableTaskRow({ t, complete, setConfirmDelete }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: t.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="taskRow">
+      <button
+        type="button"
+        className="btn btn-ghost"
+        style={{ cursor: "grab", marginRight: 8 }}
+        {...attributes}
+        {...listeners}
+        aria-label="Drag quest"
+        onClick={(e) => e.preventDefault()}
+      >
+        ⠿
+      </button>
+
+      <div className="taskInfo" style={{ flex: 1 }}>
+        <div className="taskTitle">{t.title}</div>
+        <div className="taskMeta">
+          {t.status} • {t.xp} XP
+        </div>
+      </div>
+
+      {t.status !== "DONE" && (
+        <button className="btn btn-ghost" onClick={() => complete(t.id)}>
+          Complete
+        </button>
+      )}
+
+      <button
+        className="btn btn-danger"
+        onClick={() =>
+          setConfirmDelete({ type: "task", id: t.id, title: t.title })
+        }
+      >
+        Delete
+      </button>
+    </div>
+  );
+}
+
+function taskOrderKey(projectId) {
+  return `qb_taskOrder_${projectId}`;
+}
+
+function loadTaskOrder(projectId) {
+  try {
+    const raw = localStorage.getItem(taskOrderKey(projectId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return {
+      openIds: Array.isArray(parsed?.openIds) ? parsed.openIds : [],
+      doneIds: Array.isArray(parsed?.doneIds) ? parsed.doneIds : [],
+    };
+  } catch {
+    return { openIds: [], doneIds: [] };
+  }
+}
+
+function saveTaskOrder(projectId, order) {
+  localStorage.setItem(taskOrderKey(projectId), JSON.stringify(order));
+}
+
+function applyOrderWithStatusGrouping(tasks, savedOrder) {
+  const open = tasks.filter(t => t.status !== "DONE");
+  const done = tasks.filter(t => t.status === "DONE");
+
+  const openMap = new Map(open.map(t => [t.id, t]));
+  const doneMap = new Map(done.map(t => [t.id, t]));
+
+  const orderedOpen = [];
+  const usedOpen = new Set();
+
+  const savedOpenSet = new Set(savedOrder.openIds || []);
+  const unknownOpen = open.filter(t => !savedOpenSet.has(t.id));
+  unknownOpen.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+  for (const t of unknownOpen) {
+    orderedOpen.push(t);
+    usedOpen.add(t.id);
+  }
+
+  for (const id of (savedOrder.openIds || [])) {
+    const t = openMap.get(id);
+    if (t && !usedOpen.has(id)) {
+      orderedOpen.push(t);
+      usedOpen.add(id);
+    }
+  }
+
+  const orderedDone = [];
+  const usedDone = new Set();
+  for (const id of (savedOrder.doneIds || [])) {
+    const t = doneMap.get(id);
+    if (t && !usedDone.has(id)) {
+      orderedDone.push(t);
+      usedDone.add(id);
+    }
+  }
+  const leftoverDone = done.filter(t => !usedDone.has(t.id));
+  leftoverDone.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+  orderedDone.push(...leftoverDone);
+
+  return [...orderedOpen, ...orderedDone];
 }
 
 
@@ -177,6 +291,13 @@ export default function App() {
       setDash(prev => prev ? { ...prev, tasks: [t, ...prev.tasks] } : prev);
 
       setProjectTasks(prev => [t, ...prev]);
+
+      const order = loadTaskOrder(activeProject.id);
+      saveTaskOrder(activeProject.id, {
+        openIds: [t.id, ...order.openIds.filter(id => id !== t.id)],
+        doneIds: order.doneIds,
+      });
+
       setShowCreateTask(false);
       setTitle("");
       setSize(null);
@@ -188,26 +309,60 @@ export default function App() {
     }
   }
 
-  async function handleDeleteTask() {
-    if (!confirmDelete) return;
-    const { id } = confirmDelete;
+  function handleTaskDragEnd(event) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    if (!activeProject?.id) return;
 
-    setConfirmDelete(null);
+    setProjectTasks((prev) => {
+      const activeTask = prev.find(t => t.id === active.id);
+      const overTask = prev.find(t => t.id === over.id);
+      if (!activeTask || !overTask) return prev;
 
-    setDash((prev) =>
-      prev ? { ...prev, tasks: (prev.tasks || []).filter((t) => t.id !== id) } : prev
-    );
+      const activeGroup = activeTask.status === "DONE" ? "DONE" : "OPEN";
+      const overGroup = overTask.status === "DONE" ? "DONE" : "OPEN";
 
-    setProjectTasks((prev) => (prev || []).filter((t) => t.id !== id));
+      if (activeGroup !== overGroup) return prev;
 
-    try {
-      await deleteTask(id);
-      showToast({ message: "Quest deleted 🗑️" });
-    } catch (err) {
-      console.error(err);
-      showToast({ message: err.message || "Delete failed ❌" });
-      await refresh();
+      const next = arrayMove(
+        prev,
+        prev.findIndex(t => t.id === active.id),
+        prev.findIndex(t => t.id === over.id)
+      );
+
+      const order = loadTaskOrder(activeProject.id);
+      const openIds = next.filter(t => t.status !== "DONE").map(t => t.id);
+      const doneIds = next.filter(t => t.status === "DONE").map(t => t.id);
+
+      saveTaskOrder(activeProject.id, { openIds, doneIds });
+
+      return next;
+    });
+  }
+
+  function orderKey(projectId) {
+    return `qb_taskOrder_${projectId}`;
+  }
+
+  function applySavedOrder(tasks, savedIds) {
+    if (!Array.isArray(savedIds) || savedIds.length === 0) return tasks;
+
+    const map = new Map(tasks.map(t => [t.id, t]));
+    const ordered = [];
+
+    for (const id of savedIds) {
+      const t = map.get(id);
+      if (t) {
+        ordered.push(t);
+        map.delete(id);
+      }
     }
+
+    for (const t of tasks) {
+      if (map.has(t.id)) ordered.push(t);
+    }
+
+    return ordered;
   }
 
   async function openProject(p) {
@@ -216,10 +371,46 @@ export default function App() {
 
     try {
       const tasks = await getProjectTasks(p.id);
-      setProjectTasks(sortTasks(tasks));
+
+      const saved = loadTaskOrder(p.id);
+      setProjectTasks(applyOrderWithStatusGrouping(tasks, saved));
     } catch (e) {
       console.error(e);
       showToast({ message: e.message || "Failed to load tasks ❌" });
+    }
+  }
+
+  async function handleConfirmDelete() {
+    const { type, id } = confirmDelete;
+    setConfirmDelete(null);
+
+    if (type === "task") {
+      setProjectTasks((prev) => prev.filter((t) => t.id !== id));
+      setDash((prev) =>
+        prev ? { ...prev, tasks: prev.tasks.filter((t) => t.id !== id) } : prev
+      );
+    }
+
+    if (type === "project") {
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      if (activeProject === id) {
+        setActiveProject(null);
+        setPage("home");
+      }
+    }
+
+    try {
+      if (type === "task") {
+        await deleteTask(id);
+        showToast({ message: "Quest deleted 🗑️" });
+      } else {
+        await deleteProject(id);
+        showToast({ message: "Project deleted 🗑️" });
+      }
+    } catch (e) {
+      console.error(e);
+      showToast({ message: e.message || "Delete failed ❌" });
+      await refresh();
     }
   }
 
@@ -395,33 +586,44 @@ export default function App() {
     };
   }, [userId]);
 
-  // async function addTask(e) {
-  //   e.preventDefault();
-
-  //   if (!size) {
-  //     showToast({ message: "Pick a quest size first" });
-  //     return;
-  //   }
-
-  //   const created = await createTask({
-  //     userId,
-  //     projectId: activeProject.id,
-  //     title,
-  //     description: "",
-  //     xp: XP_BY_SIZE[size],
-  //   });
-  //   setDash(prev => prev ? { ...prev, tasks: [created, ...prev.tasks] } : prev);
-
-  //   setTitle("");
-  //   setSize(null);
-  //   await refresh();
-  //   showToast({message: "Quest created ✅"});
-  // }
-
   async function complete(id) {
-    await completeTask(id);
-    await refresh();
-    showToast({message: "Quest completed 🎉"});
+    setProjectTasks(prev =>
+      prev.map(t =>
+        t.id === id ? { ...t, status: "DONE" } : t
+      )
+    );
+
+    if (activeProject?.id) {
+      const order = loadTaskOrder(activeProject.id);
+
+      saveTaskOrder(activeProject.id, {
+        openIds: order.openIds.filter(x => x !== id),
+        doneIds: [...order.doneIds.filter(x => x !== id), id],
+      });
+
+      setProjectTasks(prev => applyOrderWithStatusGrouping(prev, loadTaskOrder(activeProject.id)));
+    }
+
+    setDash(prev =>
+      prev
+        ? {
+            ...prev,
+            tasks: prev.tasks.map(t =>
+              t.id === id ? { ...t, status: "DONE" } : t
+            ),
+          }
+        : prev
+    );
+
+    try {
+      await completeTask(id);
+      showToast({ message: "Quest completed 🎉" });
+      await refresh();
+    } catch (e) {
+      console.error(e);
+      showToast({ message: "Complete failed ❌" });
+      await refresh();
+    }
   }
 
   function getLevel(totalXp) {
@@ -668,7 +870,7 @@ export default function App() {
                 Cancel
               </button>
 
-              <button className="btn btn-danger" onClick={handleDeleteTask}>
+              <button className="btn btn-danger" onClick={handleConfirmDelete}>
                 Delete
               </button>
             </div>
@@ -940,9 +1142,8 @@ export default function App() {
                     <div className="taskTitle">{p.title}</div>
                     <div className="taskMeta">{p.description || "No description"}</div>
                   </div>
-
-                  <button className="btn btn-ghost" type="button">
-                    Open
+                  <button className="btn btn-danger" onClick={(e) => {e.stopPropagation(); setConfirmDelete({ type: "project", id: p.id, title: p.title })}}>
+                    Delete
                   </button>
                 </div>
               ))
@@ -1023,31 +1224,21 @@ export default function App() {
                 </button>
             </div>
 
-            {projectTasks.map((t) => (
-              <div key={t.id} className="taskRow">
-                <div className="taskInfo">
-                  <div className="taskTitle">{t.title}</div>
-                  <div className="taskMeta">
-                    {t.status} • {t.xp} XP
-                  </div>
-                </div>
-
-                {t.status !== "DONE" && (
-                  <button className="btn btn-ghost" onClick={() => complete(t.id)}>
-                    Complete
-                  </button>
-                )}
-
-                <button
-                  className="btn btn-danger"
-                  onClick={() =>
-                    setConfirmDelete({ id: t.id, title: t.title })
-                  }
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
+            <DndContext collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+              <SortableContext
+                items={projectTasks.map((t) => t.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {projectTasks.map((t) => (
+                  <SortableTaskRow
+                    key={t.id}
+                    t={t}
+                    complete={complete}
+                    setConfirmDelete={setConfirmDelete}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           </div>
         </div>
       )}

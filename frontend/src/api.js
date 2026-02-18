@@ -120,3 +120,10 @@ export async function getProjectTasks(projectId) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+export async function deleteProject(projectId) {
+  const res = await fetch(`${API}/api/projects/${projectId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}

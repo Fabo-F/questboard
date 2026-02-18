@@ -391,8 +391,16 @@ body{
   display:flex;
   align-items:center;
   gap: 12px;
-  padding: 12px 0;
+  /* padding: 12px 0; */
   border-bottom: 1px solid var(--stroke);
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 12px 10px;
+  transition: background 0.12s ease, transform 0.06s ease;
+}
+
+.taskRow:hover{
+  background: rgba(0,0,0,0.04);
 }
 
 .taskInfo{

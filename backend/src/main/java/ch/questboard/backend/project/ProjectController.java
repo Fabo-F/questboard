@@ -9,9 +9,11 @@ import java.util.List;
 public class ProjectController {
 
   private final ProjectRepository projects;
+  private final ProjectService projectService;
 
-  public ProjectController(ProjectRepository projects) {
+  public ProjectController(ProjectRepository projects, ProjectService projectService) {
     this.projects = projects;
+    this.projectService = projectService;
   }
 
   public record CreateProjectRequest(Long userId, String title, String description) {}
@@ -31,6 +33,6 @@ public class ProjectController {
 
   @DeleteMapping("/{id}")
   public void delete(@PathVariable Long id) {
-    projects.deleteById(id);
+    projectService.deleteProject(id);
   }
 }
