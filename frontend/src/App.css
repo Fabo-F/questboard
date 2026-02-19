@@ -6,7 +6,7 @@
 /* ===== Theme tokens ===== */
 :root{
   /* brand background */
-  --bg: #6e5445;
+  --bg: linear-gradient(to top, #cbbba8,#e6ddd2,#f5f1eb);
 
   /* main page surface */
   --page: rgba(255,255,255,0.92);
@@ -21,7 +21,7 @@
 
   /* borders + shadows */
   --stroke: rgba(20,18,16,0.12);
-  --shadow: 0 14px 45px rgba(0,0,0,0.18);
+  --shadow: 0 14px 45px rgba(110, 84, 69, 0.38);
 
   /* controls */
   --inputBg: rgba(255,255,255,0.95);
@@ -500,6 +500,7 @@ body{
   justify-content:center;
   z-index: 10000;
   padding: 16px;
+  overflow-y: auto;
 }
 
 .modal{
@@ -510,6 +511,8 @@ body{
   width: min(680px, 100%);
   box-shadow: var(--shadow);
   color: var(--text);
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
 .modalTitle{

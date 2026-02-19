@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getDashboard, createTask, completeTask, deleteTask, login, register, updateProfile, changePassword, uploadAvatar, deleteAvatar,getProjects, createProject, getProjectTasks, deleteProject } from "./api";
 import "./App.css";
-import { FiEdit, FiEye, FiEyeOff } from "react-icons/fi";
+import { FiEdit, FiEye, FiEyeOff, FiCheck, FiSun, FiMoon } from "react-icons/fi";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -80,17 +80,17 @@ function SortableTaskRow({ t, complete, setConfirmDelete }) {
 
       {t.status !== "DONE" && (
         <button className="btn btn-ghost" onClick={() => complete(t.id)}>
-          Complete
+          <FiCheck size={16} />
         </button>
       )}
 
       <button
-        className="btn btn-danger"
+        className="btn btn-ghost"
         onClick={() =>
           setConfirmDelete({ type: "task", id: t.id, title: t.title })
         }
       >
-        Delete
+        X
       </button>
     </div>
   );
@@ -947,11 +947,11 @@ export default function App() {
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
-              <div style={{ padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.2)" }}>
+              <div className="modal">
                 <div style={{ opacity: 0.7, fontSize: 12 }}>Total XP</div>
                 <div className="profileStatNumber">{dash.totalXp}</div>
               </div>
-              <div style={{ padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.2)" }}>
+              <div className="modal">
                 <div style={{ opacity: 0.7, fontSize: 12 }}>XP to next</div>
                 <div className="profileStatNumber">{levelInfo.next - dash.totalXp}</div>
               </div>
@@ -1045,22 +1045,42 @@ export default function App() {
 
             <div className="fieldBlock">
               <div className="fieldLabel">Current password</div>
-              <input
-                className="textInput"
-                type="password"
-                value={currentPw}
-                onChange={(e) => setCurrentPw(e.target.value)}
-              />
+              <div className="inputWithBtn">
+                <input
+                  className="textInput"
+                  type={showPassword ? "text" : "password"}
+                  value={currentPw}
+                  onChange={(e) => setCurrentPw(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="pwToggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FiEye size={16} /> : <FiEyeOff size={16} />}
+                </button>
+              </div>
             </div>
 
             <div className="fieldBlock" style={{ marginTop: 12 }}>
               <div className="fieldLabel">New password</div>
-              <input
-                className="textInput"
-                type="password"
-                value={newPw}
-                onChange={(e) => setNewPw(e.target.value)}
-              />
+              <div className="inputWithBtn">
+                <input
+                  className="textInput"
+                  type={showPassword ? "text" : "password"}
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="pwToggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <FiEye size={16} /> : <FiEyeOff size={16} />}
+                </button>
+              </div>
             </div>
 
             <div className="modalFooter" style={{ marginTop: 16 }}>
@@ -1115,7 +1135,7 @@ export default function App() {
                 className="btn btn-ghost"
                 type="button"
                 onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
-                {theme === "dark" ? "Light" : "Dark"}
+                {theme === "dark" ? <FiSun size={16} /> : <FiMoon size={16} />}
               </button>
             </div>
           </header>
@@ -1185,12 +1205,12 @@ export default function App() {
                       </div>
 
                       <button
-                        className="btn btn-danger"
+                        className="btn btn-ghost"
                         onClick={() =>
                           setConfirmDelete({ type: "project", id: p.id, title: p.title })
                         }
                       >
-                        Delete
+                        X
                       </button>
                     </div>
                   </div>
