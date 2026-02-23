@@ -5,7 +5,7 @@ import { FiEdit, FiEye, FiEyeOff, FiCheck, FiSun, FiMoon } from "react-icons/fi"
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-
+import { Routes, Route, Navigate, useNavigate, useParams } from "react-router-dom";
 
 
 async function compressAvatar(file, opts = {}) {
@@ -161,6 +161,8 @@ function applyOrderWithStatusGrouping(tasks, savedOrder) {
 
 
 export default function App() {
+  const navigate = useNavigate();
+
   const [dash, setDash] = useState(null);
   const [page, setPage] = useState("home");
 
@@ -349,31 +351,6 @@ export default function App() {
     });
   }
 
-  // function orderKey(projectId) {
-  //   return `qb_taskOrder_${projectId}`;
-  // }
-
-  // function applySavedOrder(tasks, savedIds) {
-  //   if (!Array.isArray(savedIds) || savedIds.length === 0) return tasks;
-
-  //   const map = new Map(tasks.map(t => [t.id, t]));
-  //   const ordered = [];
-
-  //   for (const id of savedIds) {
-  //     const t = map.get(id);
-  //     if (t) {
-  //       ordered.push(t);
-  //       map.delete(id);
-  //     }
-  //   }
-
-  //   for (const t of tasks) {
-  //     if (map.has(t.id)) ordered.push(t);
-  //   }
-
-  //   return ordered;
-  // }
-
   async function openProject(p) {
     setActiveProject(p);
     setPage("project");
@@ -402,7 +379,7 @@ export default function App() {
 
     if (type === "project") {
       setProjects((prev) => prev.filter((p) => p.id !== id));
-      if (activeProject === id) {
+      if (activeProject?.id === id) {
         setActiveProject(null);
         setPage("home");
       }
