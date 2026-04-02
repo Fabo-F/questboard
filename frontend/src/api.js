@@ -2,6 +2,11 @@ const API = "http://localhost:8080";
 
 async function parseError(res) {
   const text = await res.text();
+
+  if (res.status === 401) return "Invalid password";
+  if (res.status === 404) return "User not found";
+  if (res.status === 409) return "Username already taken";
+
   return text || `HTTP ${res.status}`;
 }
 
@@ -123,6 +128,49 @@ export async function getProjectTasks(projectId) {
 
 export async function deleteProject(projectId) {
   const res = await fetch(`${API}/api/projects/${projectId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function updateProject(projectId, payload) {
+  const res = await fetch(`${API}/api/projects/${projectId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateTask(taskId, payload) {
+  const res = await fetch(`${API}/api/tasks/${taskId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function createFeedback(payload) {
+  const res = await fetch(`${API}/api/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getFeedback(userId) {
+  const res = await fetch(`${API}/api/feedback?userId=${userId}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteFeedback(feedbackId, userId) {
+  const res = await fetch(`${API}/api/feedback/${feedbackId}?userId=${userId}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(await res.text());

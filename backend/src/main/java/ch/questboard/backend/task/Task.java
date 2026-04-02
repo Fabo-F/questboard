@@ -36,14 +36,18 @@ public class Task {
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
+    @Column(nullable = false)
+    private String size;
+
     protected Task(){
 
     }
 
-    public Task(Long userId, String title, String description, int xp){
+    public Task(Long userId, String title, String description, String size, int xp){
         this.userId = userId;
         this.title = title;
         this.description = description;
+        this.size = size;
         this.xp = xp;
         this.status = TaskStatus.OPEN;
         this.createdAt = Instant.now();
@@ -95,5 +99,13 @@ public class Task {
 
     public Instant getCreatedAt(){ 
         return createdAt; 
+    }
+
+    public String getSize() {
+        return size;
+    }
+
+    public void setSize(String size) {
+        this.size = size;
     }
 }

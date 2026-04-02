@@ -37,6 +37,11 @@ public class ProjectController {
     long totalTasks
   ) {}
 
+  public record UpdateProjectRequest(
+    String title,
+    String description
+  ) {}
+
   @GetMapping("/user/{userId}")
   public List<ProjectDto> byUser(@PathVariable Long userId) {
 
@@ -67,23 +72,32 @@ public class ProjectController {
         .toList();
   }
 
-  @PostMapping
-  public ProjectDto create(@RequestBody CreateProjectRequest req) {
+  @PutMapping("/{id}")
+  public ProjectDto update(@PathVariable Long id, @RequestBody UpdateProjectRequest req) {
+    Project project = projects.findById(id)
+        .orElseThrow(() -> new RuntimeException("Project not found"));
+
     if (req.title() == null || req.title().trim().isEmpty()) {
       throw new RuntimeException("Title required");
     }
 
-    Project saved = projects.save(
-        new Project(req.userId(), req.title().trim(), req.description())
-    );
+    project.setTitle(req.title().trim());
+    project.setDescription(req.description());
+
+    Project saved = projects.save(project);
+
+    long totalTasks = tasks.countByProjectId(saved.getId());
+    long openTasks = tasks.findByProjectId(saved.getId()).stream()
+        .filter(t -> t.getStatus() != ch.questboard.backend.task.TaskStatus.DONE)
+        .count();
 
     return new ProjectDto(
         saved.getId(),
         saved.getUserId(),
         saved.getTitle(),
         saved.getDescription(),
-        0L, // openTasks
-        0L  // totalTasks
+        openTasks,
+        totalTasks
     );
   }
 

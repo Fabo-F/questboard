@@ -15,6 +15,20 @@ public class TaskController {
     private final TaskService taskService;
     private final ProjectRepository projectRepo;
 
+    public record UpdateTaskRequest(
+        @jakarta.validation.constraints.NotBlank
+        String title,
+
+        String description,
+
+        @jakarta.validation.constraints.NotBlank
+        String size,
+
+        @jakarta.validation.constraints.Min(1)
+        @jakarta.validation.constraints.Max(500)
+        int xp
+    ) {}
+
     public TaskController(TaskRepository repo, TaskService taskService, ProjectRepository projectRepo){
         this.repo = repo;
         this.taskService = taskService;
@@ -35,8 +49,27 @@ public class TaskController {
     public Task create(@RequestBody @jakarta.validation.Valid CreateTaskRequest req){
         var project = projectRepo.findById(req.projectId()).orElseThrow();
 
-        Task task = new Task(req.userId(), req.title(), req.description(), req.xp());
+        Task task = new Task(
+            req.userId(),
+            req.title(),
+            req.description(),
+            req.size(),
+            req.xp()
+        );
         task.setProject(project);
+
+        return repo.save(task);
+    }
+
+    @PutMapping("/{id}")
+    public Task update(@PathVariable Long id, @RequestBody @jakarta.validation.Valid UpdateTaskRequest req) {
+        Task task = repo.findById(id)
+            .orElseThrow(() -> new RuntimeException("Task not found"));
+
+        task.setTitle(req.title().trim());
+        task.setDescription(req.description());
+        task.setSize(req.size());
+        task.setXp(req.xp());
 
         return repo.save(task);
     }
@@ -44,12 +77,15 @@ public class TaskController {
     public record CreateTaskRequest(
         Long userId,
         Long projectId,
-        
+
         @jakarta.validation.constraints.NotBlank
         String title,
-        
-        String description, 
-        
+
+        String description,
+
+        @jakarta.validation.constraints.NotBlank
+        String size,
+
         @jakarta.validation.constraints.Min(1)
         @jakarta.validation.constraints.Max(500)
         int xp

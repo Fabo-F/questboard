@@ -30,6 +30,9 @@ public class User {
     @JsonIgnore
     private String avatarContentType;
 
+    @Column(nullable = false)
+    private boolean isAdmin = false;
+
     protected User() {}
 
     public User(String username) {
@@ -78,5 +81,13 @@ public class User {
 
     public void setAvatarContentType(String avatarContentType) { 
         this.avatarContentType = avatarContentType; 
+    }
+
+    public boolean isAdmin() {
+        return isAdmin;
+    }
+
+    public void setAdmin(boolean admin) {
+        isAdmin = admin;
     }
 }

@@ -14,6 +14,11 @@ import {
   createProject,
   getProjectTasks,
   deleteProject,
+  updateTask,
+  updateProject,
+  createFeedback,
+  getFeedback,
+  deleteFeedback,
 } from "./api";
 import "./App.css";
 import { FiEdit, FiEye, FiEyeOff, FiCheck, FiSun, FiMoon } from "react-icons/fi";
@@ -52,7 +57,7 @@ async function compressAvatar(file, opts = {}) {
   return new File([blob], `avatar.${ext}`, { type: mime });
 }
 
-function SortableTaskRow({ t, complete, setConfirmDelete }) {
+function SortableTaskRow({ t, complete, setConfirmDelete, onEdit }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: t.id });
 
@@ -85,8 +90,22 @@ function SortableTaskRow({ t, complete, setConfirmDelete }) {
       </div>
 
       {t.status !== "DONE" && (
-        <button className="btn btn-ghost" onClick={() => complete(t.id)} title="Complete quest">
+        <button
+          className="btn btn-ghost"
+          onClick={() => complete(t.id)}
+          title="Complete quest"
+        >
           <FiCheck size={16} />
+        </button>
+      )}
+
+      {t.status !== "DONE" && (
+        <button
+          className="btn btn-ghost"
+          onClick={() => onEdit(t)}
+          title="Edit quest"
+        >
+          <FiEdit size={16} />
         </button>
       )}
 
@@ -272,6 +291,24 @@ export default function App() {
   const [projectTitle, setProjectTitle] = useState("");
   const [projectDesc, setProjectDesc] = useState("");
   const [projectTasks, setProjectTasks] = useState([]);
+  const [showEditTask, setShowEditTask] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [editTaskTitle, setEditTaskTitle] = useState("");
+  const [editTaskSize, setEditTaskSize] = useState(null);
+
+  const [showEditProject, setShowEditProject] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [editProjectTitle, setEditProjectTitle] = useState("");
+  const [editProjectDesc, setEditProjectDesc] = useState("");
+
+  const [feedbackName, setFeedbackName] = useState("");
+  const [feedbackEmail, setFeedbackEmail] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem("qb_isAdmin") === "true";
+  });
+  const [feedbackList, setFeedbackList] = useState([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   const navigate = useNavigate();
   const XP_BY_SIZE = { SMALL: 25, MEDIUM: 50, BIG: 100 };
@@ -306,6 +343,26 @@ export default function App() {
       console.error(e);
     }
   }, [userId]);
+
+  const loadFeedback = useCallback(async () => {
+    if (!userId || !isAdmin) return;
+
+    try {
+      setFeedbackLoading(true);
+      const data = await getFeedback(userId);
+      setFeedbackList(data);
+    } catch (err) {
+      showToast({ message: err.message || "Failed to load feedback ❌" });
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, [userId, isAdmin, showToast]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadFeedback();
+    }
+  }, [isAdmin, loadFeedback]);
 
   const refreshProjects = useCallback(async () => {
     if (!userId) return;
@@ -346,22 +403,74 @@ export default function App() {
     try {
       const u = authMode === "login" ? await login(username, password) : await register(username, password);
       localStorage.setItem("qb_userId", String(u.id));
+      localStorage.setItem("qb_isAdmin", String(!!u.isAdmin));
       setUserId(u.id);
+      setIsAdmin(!!u.isAdmin);
+
       setUsername("");
       setPassword("");
       navigate("/");
     } catch (err) {
-      showToast({ message: err.message || "Auth failed ❌" });
+      if (authMode === "login") {
+        showToast({ message: "Wrong username or password ❌" });
+        return;
+      }
+
+      if (err.message?.toLowerCase().includes("already")) {
+        showToast({ message: "Username already taken ❌" });
+        return;
+      }
+
+      showToast({ message: "Registration failed ❌" });
     }
   }
 
   function logout() {
     localStorage.removeItem("qb_userId");
+    localStorage.removeItem("qb_isAdmin");
     setUserId(null);
+    setIsAdmin(false);
     setDash(null);
     setProjects([]);
     setShowProfile(false);
     navigate("/");
+  }
+
+  async function handleFeedbackSubmit(e) {
+    e.preventDefault();
+
+    if (!feedbackName.trim() || !feedbackMessage.trim()) {
+      showToast({ message: "Please fill in name and message" });
+      return;
+    }
+
+    try {
+      await createFeedback({
+        name: feedbackName.trim(),
+        email: feedbackEmail.trim(),
+        message: feedbackMessage.trim(),
+      });
+
+      showToast({ message: "Feedback sent ✅" });
+
+      setFeedbackName("");
+      setFeedbackEmail("");
+      setFeedbackMessage("");
+    } catch (err) {
+      showToast({ message: err.message || "Failed to send feedback ❌" });
+    }
+  }
+
+  async function handleDeleteFeedback(feedbackId) {
+    if (!userId || !isAdmin) return;
+
+    try {
+      await deleteFeedback(feedbackId, userId);
+      setFeedbackList((prev) => prev.filter((item) => item.id !== feedbackId));
+      showToast({ message: "Feedback deleted 🗑️" });
+    } catch (err) {
+      showToast({ message: err.message || "Failed to delete feedback ❌" });
+    }
   }
 
   async function handleCreateProject(e) {
@@ -413,6 +522,99 @@ export default function App() {
     }
   }
 
+  function openEditTaskModal(task) {
+    setEditingTask(task);
+    setEditTaskTitle(task.title || "");
+    setEditTaskSize(task.size || null);
+    setShowEditTask(true);
+  }
+
+  function openEditProjectModal(project) {
+    setEditingProject(project);
+    setEditProjectTitle(project.title || "");
+    setEditProjectDesc(project.description || "");
+    setShowEditProject(true);
+  }
+
+  async function handleEditTask(e) {
+    e.preventDefault();
+    if (!editingTask) return;
+    if (!editTaskTitle.trim()) return;
+    if (!editTaskSize) {
+      showToast({ message: "Pick a quest size first" });
+      return;
+    }
+
+    try {
+      const updated = await updateTask(editingTask.id, {
+        title: editTaskTitle.trim(),
+        size: editTaskSize,
+        xp: XP_BY_SIZE[editTaskSize],
+      });
+
+      setProjectTasks((prev) =>
+        prev.map((t) => (t.id === editingTask.id ? { ...t, ...updated } : t))
+      );
+
+      setDash((prev) =>
+        prev
+          ? {
+              ...prev,
+              tasks: prev.tasks.map((t) =>
+                t.id === editingTask.id ? { ...t, ...updated } : t
+              ),
+            }
+          : prev
+      );
+
+      setShowEditTask(false);
+      setEditingTask(null);
+      setEditTaskTitle("");
+      setEditTaskSize(null);
+
+      await refreshProjects();
+      await refresh();
+
+      showToast({ message: "Quest updated ✅" });
+    } catch (err) {
+      showToast({ message: err.message || "Update failed ❌" });
+    }
+  }
+
+  async function handleEditProject(e) {
+    e.preventDefault();
+    if (!editingProject) return;
+    if (!editProjectTitle.trim()) return;
+
+    try {
+      const updated = await updateProject(editingProject.id, {
+        title: editProjectTitle.trim(),
+        description: editProjectDesc.trim(),
+      });
+
+      setProjects((prev) =>
+        prev.map((p) => (p.id === editingProject.id ? { ...p, ...updated } : p))
+      );
+
+      if (activeProject?.id === editingProject.id) {
+        setActiveProject((prev) =>
+          prev ? { ...prev, ...updated } : prev
+        );
+      }
+
+      setShowEditProject(false);
+      setEditingProject(null);
+      setEditProjectTitle("");
+      setEditProjectDesc("");
+
+      await refreshProjects();
+
+      showToast({ message: "Project updated ✅" });
+    } catch (err) {
+      showToast({ message: err.message || "Update failed ❌" });
+    }
+  }
+
   function handleTaskDragEnd(event) {
     const { active, over } = event;
     if (!over || active.id === over.id || !activeProject?.id) return;
@@ -456,17 +658,23 @@ export default function App() {
   async function handleConfirmDelete() {
     const { type, id } = confirmDelete;
     setConfirmDelete(null);
+
     try {
       if (type === "task") {
         await deleteTask(id);
         setProjectTasks((prev) => prev.filter((t) => t.id !== id));
         showToast({ message: "Quest deleted 🗑️" });
-      } else {
+      } else if (type === "project") {
         await deleteProject(id);
         setProjects((prev) => prev.filter((p) => p.id !== id));
         if (activeProject?.id === id) navigate("/");
         showToast({ message: "Project deleted 🗑️" });
+      } else if (type === "feedback") {
+        await deleteFeedback(id, userId);
+        setFeedbackList((prev) => prev.filter((item) => item.id !== id));
+        showToast({ message: "Feedback deleted 🗑️" });
       }
+
       await refresh();
       await refreshProjects();
     } catch (err) {
@@ -848,6 +1056,133 @@ export default function App() {
         </div>
       )}
 
+      {showEditProject && editingProject && (
+        <div className="modalOverlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 20 }}>Edit Project</h3>
+
+            <form onSubmit={handleEditProject}>
+              <div style={{ marginBottom: 16 }}>
+                <label className="inputLabel">Project Title</label>
+                <input
+                  className="textInput"
+                  value={editProjectTitle}
+                  onChange={(e) => setEditProjectTitle(e.target.value)}
+                  placeholder="e.g. Build a Treehouse"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ marginBottom: 24 }}>
+                <label className="inputLabel">Description (optional)</label>
+                <textarea
+                  className="textInput"
+                  value={editProjectDesc}
+                  onChange={(e) => setEditProjectDesc(e.target.value)}
+                  placeholder="What is this project about?"
+                  style={{ minHeight: 80, resize: "vertical" }}
+                />
+              </div>
+
+              <div className="modalFooter">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setShowEditProject(false);
+                    setEditingProject(null);
+                    setEditProjectTitle("");
+                    setEditProjectDesc("");
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button type="submit" className="btn btn-primary">
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showEditTask && editingTask && (
+        <div className="modalOverlay">
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 20 }}>Edit Quest</h3>
+
+            <form onSubmit={handleEditTask}>
+              <div style={{ marginBottom: 16 }}>
+                <label className="inputLabel">Quest Title</label>
+                <input
+                  className="textInput"
+                  value={editTaskTitle}
+                  onChange={(e) => setEditTaskTitle(e.target.value)}
+                  placeholder="What needs to be done?"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ marginBottom: 24 }}>
+                <label className="inputLabel">Quest Size</label>
+                <div
+                  className="sizeSelector"
+                  style={{ display: "flex", gap: "10px", marginTop: "8px" }}
+                >
+                  {Object.entries(XP_BY_SIZE).map(([s, xp]) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setEditTaskSize(s)}
+                      style={{
+                        flex: 1,
+                        padding: "8px 4px",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        fontSize: "13px",
+                        transition: "all 0.1s ease",
+                        backgroundColor:
+                          editTaskSize === s ? "var(--primary, #007bff)" : "#ffffff",
+                        color: editTaskSize === s ? "#ffffff" : "#333333",
+                        border:
+                          editTaskSize === s
+                            ? "1px solid var(--primary, #007bff)"
+                            : "1px solid #dcdcdc",
+                        fontWeight: editTaskSize === s ? "700" : "500",
+                      }}
+                    >
+                      {s} ({xp} XP)
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="modalFooter">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setShowEditTask(false);
+                    setEditingTask(null);
+                    setEditTaskTitle("");
+                    setEditTaskSize(null);
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button type="submit" className="btn btn-primary">
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {confirmDelete && (
         <div className="modalOverlay" onClick={() => setConfirmDelete(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 320, textAlign: "center" }}>
@@ -863,49 +1198,513 @@ export default function App() {
       )}
 
       <Routes>
-        <Route path="/" element={
-          <div className="page">
-            <header className="header">
-              <div className="headerLeft">QuestBoard</div>
-              <div className="headerRight">
-                <span className="headerUser"><b>{dash.username}</b></span>
-                <button className="avatarBtn" onClick={() => setShowProfile(true)} title="Profile">
-                  {avatarOk ? <img className="avatarImg" src={`${AVATAR_URL}?v=${avatarVersion}`} alt="avatar" onError={() => setAvatarOk(false)} /> : <span className="avatarFallback">{(dash.username?.[0] || "?").toUpperCase()}</span>}
-                </button>
-                <button className="btn btn-ghost" type="button" onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
-                  {theme === "dark" ? <FiSun size={16} /> : <FiMoon size={16} />}
-                </button>
-              </div>
-            </header>
-            <div className="card"><div className="panel"><div><h2 className="sectionTitle">{welcomeText}</h2></div><div className="levelBlock"><div>Level: <b>{levelInfo.level}</b></div><div className="progressBar"><div className="progressFill" style={{ width: `${levelInfo.progress * 100}%` }} /></div><div className="levelHint">{levelInfo.next - dash.totalXp} XP to next level</div></div></div><div className="panel"><h2 className="sectionTitle" style={{ fontSize: 18, marginBottom: 6 }}>Dashboard</h2><div className="dashGrid"><div className="dashStat"><div className="dashLabel">Projects in progress</div><div className="dashValue">{inProgressProjects}</div></div><div className="dashStat"><div className="dashLabel">Open quests to complete</div><div className="dashValue">{totalOpenQuests}</div></div><div className="dashStat"><div className="dashLabel">Completed quests</div><div className="dashValue">{totalDoneQuests}</div></div></div><div className="dashNextUp"><div className="dashLabel" style={{ marginBottom: 8 }}>Next up</div>{nextUp.length === 0 ? <div style={{ opacity: 0.7 }}>No open quests 🎉</div> : <div className="dashNextList">{nextUp.map((t) => <div key={t.id} className="dashNextItem"><div className="taskTitle">{t.title}</div><div className="taskMeta">{t.status} • {t.xp} XP</div></div>)}</div>}</div></div></div>
-            <div className="tasks card"><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><h2 className="sectionTitle">Projects</h2><button className="btn btn-primary" onClick={() => setShowCreateProject(true)}>+ New</button></div>{projects.length === 0 ? <div style={{ opacity: 0.7, marginTop: 10 }}>No projects yet.</div> : projects.map((p) => { const pct = p.totalTasks ? Math.round(((p.totalTasks - p.openTasks) / p.totalTasks) * 100) : 0; return (<div key={p.id} className="taskRow projectRow" style={{ cursor: "pointer" }} onClick={() => openProject(p)}><div className="taskInfo" style={{ flex: 1 }}><div className="taskTitle">{p.title}</div><div className="taskMeta">{p.openTasks ?? 0} open • {p.totalTasks ?? 0} total</div></div><div className="projectRight" onClick={(e) => e.stopPropagation()}><div className="projectProgressWrap"><div className="projectPct">{pct}%</div><div className="projectBar"><div className={`projectBarFill ${pct === 100 ? "isDone" : ""}`} style={{ width: `${pct}%` }} /></div></div><button className="btn btn-ghost" onClick={() => setConfirmDelete({ type: "project", id: p.id, title: p.title })}>X</button></div></div>); })}</div>
-          </div>
-        } />
+        <Route
+          path="/"
+          element={
+            <div className="page">
+              <header className="header">
+                <div className="headerLeft">QuestBoard</div>
 
-        <Route path="/project/:projectId" element={
-          <>
-            <ProjectRouteLoader projects={projects} setActiveProject={setActiveProject} setProjectTasks={setProjectTasks} setProjectLoading={setProjectLoading} showToast={showToast} />
+                <div className="headerRight">
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => navigate("/about")}
+                  >
+                    About
+                  </button>
+                  <span className="headerUser">
+                    <b>{dash.username}</b>
+                  </span>
+
+                  <button
+                    className="avatarBtn"
+                    onClick={() => setShowProfile(true)}
+                    title="Profile"
+                  >
+                    {avatarOk ? (
+                      <img
+                        className="avatarImg"
+                        src={`${AVATAR_URL}?v=${avatarVersion}`}
+                        alt="avatar"
+                        onError={() => setAvatarOk(false)}
+                      />
+                    ) : (
+                      <span className="avatarFallback">
+                        {(dash.username?.[0] || "?").toUpperCase()}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+                  >
+                    {theme === "dark" ? <FiSun size={16} /> : <FiMoon size={16} />}
+                  </button>
+                </div>
+              </header>
+
+              <div className="card">
+                <div className="panel">
+                  <div>
+                    <h2 className="sectionTitle">{welcomeText}</h2>
+                  </div>
+
+                  <div className="levelBlock">
+                    <div>
+                      Level: <b>{levelInfo.level}</b>
+                    </div>
+
+                    <div className="progressBar">
+                      <div
+                        className="progressFill"
+                        style={{ width: `${levelInfo.progress * 100}%` }}
+                      />
+                    </div>
+
+                    <div className="levelHint">
+                      {levelInfo.next - dash.totalXp} XP to next level
+                    </div>
+                  </div>
+
+                  <div className="panel">
+                    <h2
+                      className="sectionTitle"
+                      style={{ fontSize: 18, marginBottom: 6 }}
+                    >
+                      Dashboard
+                    </h2>
+
+                    <div className="dashGrid">
+                      <div className="dashStat">
+                        <div className="dashLabel">Projects in progress</div>
+                        <div className="dashValue">{inProgressProjects}</div>
+                      </div>
+
+                      <div className="dashStat">
+                        <div className="dashLabel">Open quests to complete</div>
+                        <div className="dashValue">{totalOpenQuests}</div>
+                      </div>
+
+                      <div className="dashStat">
+                        <div className="dashLabel">Completed quests</div>
+                        <div className="dashValue">{totalDoneQuests}</div>
+                      </div>
+                    </div>
+
+                    <div className="dashNextUp">
+                      <div className="dashLabel" style={{ marginBottom: 8 }}>
+                        Next up
+                      </div>
+
+                      {nextUp.length === 0 ? (
+                        <div style={{ opacity: 0.7 }}>No open quests 🎉</div>
+                      ) : (
+                        <div className="dashNextList">
+                          {nextUp.map((t) => (
+                            <div key={t.id} className="dashNextItem">
+                              <div className="taskTitle">{t.title}</div>
+                              <div className="taskMeta">
+                                {t.status} • {t.xp} XP
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="tasks card">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <h2 className="sectionTitle">Projects</h2>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setShowCreateProject(true)}
+                  >
+                    + New
+                  </button>
+                </div>
+
+                {projects.length === 0 ? (
+                  <div style={{ opacity: 0.7, marginTop: 10 }}>No projects yet.</div>
+                ) : (
+                  projects.map((p) => {
+                    const pct = p.totalTasks
+                      ? Math.round(((p.totalTasks - p.openTasks) / p.totalTasks) * 100)
+                      : 0;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="taskRow projectRow"
+                        style={{ cursor: "pointer" }}
+                        onClick={() => openProject(p)}
+                      >
+                        <div className="taskInfo" style={{ flex: 1 }}>
+                          <div className="taskTitle">{p.title}</div>
+                          <div className="taskMeta">
+                            {p.openTasks ?? 0} open • {p.totalTasks ?? 0} total
+                          </div>
+                        </div>
+
+                        <div
+                          className="projectRight"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="projectProgressWrap">
+                            <div className="projectPct">{pct}%</div>
+                            <div className="projectBar">
+                              <div
+                                className={`projectBarFill ${
+                                  pct === 100 ? "isDone" : ""
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            className="btn btn-ghost"
+                            onClick={() => openEditProjectModal(p)}
+                            title="Edit project"
+                          >
+                            <FiEdit size={16} />
+                          </button>
+
+                          <button
+                            className="btn btn-ghost"
+                            onClick={() =>
+                              setConfirmDelete({
+                                type: "project",
+                                id: p.id,
+                                title: p.title,
+                              })
+                            }
+                            title="Delete project"
+                          >
+                            X
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          }
+        />
+
+        <Route
+          path="/project/:projectId"
+          element={
+            <>
+              <ProjectRouteLoader
+                projects={projects}
+                setActiveProject={setActiveProject}
+                setProjectTasks={setProjectTasks}
+                setProjectLoading={setProjectLoading}
+                showToast={showToast}
+              />
+
+              <div className="page">
+                <header className="header">
+                  <div className="headerLeft">QuestBoard</div>
+
+                  <div className="headerRight">
+                    <div className="headerLevel">
+                      <div className="headerLevelText">
+                        Lvl: <b>{levelInfo.level}</b>
+                      </div>
+                      <div className="headerLevelBar">
+                        <div
+                          className="headerLevelFill"
+                          style={{ width: `${levelInfo.progress * 100}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <span className="headerUser">
+                      <b>{dash.username}</b>
+                    </span>
+
+                    <button
+                      className="avatarBtn"
+                      onClick={() => setShowProfile(true)}
+                      title="Profile"
+                    >
+                      {avatarOk ? (
+                        <img
+                          className="avatarImg"
+                          src={`${AVATAR_URL}?v=${avatarVersion}`}
+                          alt="avatar"
+                          onError={() => setAvatarOk(false)}
+                        />
+                      ) : (
+                        <span className="avatarFallback">
+                          {(dash.username?.[0] || "?").toUpperCase()}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+                    >
+                      {theme === "dark" ? <FiSun size={16} /> : <FiMoon size={16} />}
+                    </button>
+                  </div>
+                </header>
+
+                <div className="card">
+                  <div className="panel">
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        width: "100%",
+                        gap: 16,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 18, fontWeight: 800 }}>
+                          {activeProject?.title}
+                        </div>
+                        <div style={{ opacity: 0.7 }}>
+                          {activeProject?.description}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => openEditProjectModal(activeProject)}
+                          title="Edit project"
+                        >
+                          <FiEdit size={16} />
+                        </button>
+
+                        <button
+                          className="btn btn-ghost"
+                          onClick={() => navigate("/")}
+                        >
+                          ← Back
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="tasks card">
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <h2 className="sectionTitle">Quests</h2>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => setShowCreateTask(true)}
+                    >
+                      + New
+                    </button>
+                  </div>
+
+                  {projectLoading ? (
+                    <div style={{ opacity: 0.7, marginTop: 10 }}>Loading tasks…</div>
+                  ) : (
+                    <DndContext
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleTaskDragEnd}
+                    >
+                      <SortableContext
+                        items={projectTasks.map((t) => t.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {projectTasks.map((t) => (
+                          <SortableTaskRow
+                            key={t.id}
+                            t={t}
+                            complete={complete}
+                            setConfirmDelete={setConfirmDelete}
+                            onEdit={openEditTaskModal}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </div>
+              </div>
+            </>
+          }
+        />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
+
+        <Route
+          path="/about"
+          element={
             <div className="page">
               <header className="header">
                 <div className="headerLeft">QuestBoard</div>
                 <div className="headerRight">
-                  <div className="headerLevel"><div className="headerLevelText">Lvl: <b>{levelInfo.level}</b></div><div className="headerLevelBar"><div className="headerLevelFill" style={{ width: `${levelInfo.progress * 100}%` }} /></div></div>
+                  <button className="btn btn-ghost" onClick={() => navigate("/")}>
+                    ← Back
+                  </button>
                   <span className="headerUser"><b>{dash.username}</b></span>
                   <button className="avatarBtn" onClick={() => setShowProfile(true)} title="Profile">
-                    {avatarOk ? <img className="avatarImg" src={`${AVATAR_URL}?v=${avatarVersion}`} alt="avatar" onError={() => setAvatarOk(false)} /> : <span className="avatarFallback">{(dash.username?.[0] || "?").toUpperCase()}</span>}
+                    {avatarOk ? (
+                      <img className="avatarImg" src={`${AVATAR_URL}?v=${avatarVersion}`} alt="avatar" onError={() => setAvatarOk(false)} />
+                    ) : (
+                      <span className="avatarFallback">{(dash.username?.[0] || "?").toUpperCase()}</span>
+                    )}
                   </button>
                   <button className="btn btn-ghost" type="button" onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}>
                     {theme === "dark" ? <FiSun size={16} /> : <FiMoon size={16} />}
                   </button>
                 </div>
               </header>
-              <div className="card"><div className="panel"><div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}><div><div style={{ fontSize: 18, fontWeight: 800 }}>{activeProject?.title}</div><div style={{ opacity: 0.7 }}>{activeProject?.description}</div></div><button className="btn btn-ghost" onClick={() => navigate("/")}>← Back</button></div></div></div>
-              <div className="tasks card"><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><h2 className="sectionTitle">Quests</h2><button className="btn btn-primary" onClick={() => setShowCreateTask(true)}>+ New</button></div>{projectLoading ? <div style={{ opacity: 0.7, marginTop: 10 }}>Loading tasks…</div> : <DndContext collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}><SortableContext items={projectTasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>{projectTasks.map((t) => <SortableTaskRow key={t.id} t={t} complete={complete} setConfirmDelete={setConfirmDelete} />)}</SortableContext></DndContext>}</div>
-            </div>
-          </>
-        } />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+              {/* --- About Section --- */}
+              <div className="card" style={{ marginBottom: 16 }}>
+                <div className="panel">
+                  <h2 className="sectionTitle">About QuestBoard</h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <strong style={{ fontSize: 16, marginBottom: 4 }}>
+                      A to-do app, but like a game.
+                    </strong>
+                    <p style={{ opacity: 0.85, lineHeight: 1.6, margin: 0 }}>
+                      <strong>QuestBoard</strong> is a gamified task management app that turns everyday tasks into 
+                      <strong> quests</strong>. Instead of a normal to-do list, you create projects, complete tasks 
+                      for <strong>XP</strong>, and <strong>level up</strong>.
+                    </p>
+                    <p style={{ opacity: 0.85, lineHeight: 1.6, margin: 0 }}>
+                      You can <strong>organize tasks</strong>, move them with <strong>drag-and-drop</strong>, and track 
+                      your <strong>progress</strong> as you go.
+                    </p>
+                    <p style={{ opacity: 0.85, lineHeight: 1.6, margin: 0 }}>
+                      I built this project to make productivity feel more engaging and less boring, while also 
+                      showcasing my <strong>full-stack development</strong> skills.
+                    </p>
+                    <p style={{ opacity: 0.85, fontWeight: 600, margin: 0 }}>
+                      Tech stack: React, Spring Boot, PostgreSQL, Docker.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* --- Feedback Form --- */}
+              <div className="card">
+                <div className="panel">
+                  <h2 className="sectionTitle">Feedback</h2>
+                  <p style={{ opacity: 0.75, marginBottom: 20 }}>
+                    Got ideas, feedback, or found a bug? Let me know.
+                  </p>
+
+                  <form onSubmit={handleFeedbackSubmit}>
+                    <div style={{ marginBottom: 16 }}>
+                      <label className="inputLabel">Name</label>
+                      <input
+                        className="textInput"
+                        placeholder="Your name"
+                        value={feedbackName}
+                        onChange={(e) => setFeedbackName(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <label className="inputLabel">Email (optional)</label>
+                      <input
+                        className="textInput"
+                        placeholder="your@email.com"
+                        value={feedbackEmail}
+                        onChange={(e) => setFeedbackEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 24 }}>
+                      <label className="inputLabel">Message</label>
+                      <textarea
+                        className="textInput"
+                        placeholder="Write your feedback here..."
+                        style={{ minHeight: 120, resize: "vertical" }}
+                        value={feedbackMessage}
+                        onChange={(e) => setFeedbackMessage(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="modalFooter" style={{ padding: 0, border: "none" }}>
+                      <button type="submit" className="btn btn-primary">
+                        Send Feedback
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* --- Admin List --- */}
+              {isAdmin && (
+                <div className="tasks card" style={{ marginTop: 16 }}>
+                  <div className="panel">
+                    <h2 className="sectionTitle">Submitted Feedback</h2>
+                    <div style={{ marginTop: 16 }}>
+                      {feedbackLoading ? (
+                        <div style={{ opacity: 0.7 }}>Loading feedback…</div>
+                      ) : feedbackList.length === 0 ? (
+                        <div style={{ opacity: 0.7 }}>No feedback yet.</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                          {feedbackList.map((item) => (
+                            <div key={item.id} className="taskRow" style={{ cursor: "default", display: "flex", alignItems: "flex-start" }}>
+                              <div className="taskInfo" style={{ flex: 1 }}>
+                                <div className="taskTitle">{item.name}</div>
+                                <div className="taskMeta" style={{ marginBottom: 4 }}>
+                                  {item.email || "No email provided"}
+                                </div>
+                                <div className="taskMeta" style={{ marginBottom: 8, fontSize: 11 }}>
+                                  Sent: {new Date(item.createdAt).toLocaleString("de-CH")}
+                                </div>
+                                <div style={{ whiteSpace: "pre-wrap", opacity: 0.9, fontSize: 14 }}>
+                                  {item.message}
+                                </div>
+                              </div>
+                              <button
+                                className="btn btn-ghost"
+                                style={{ color: "var(--text-main)", fontWeight: "bold" }}
+                                onClick={() => setConfirmDelete({
+                                  type: "feedback",
+                                  id: item.id,
+                                  title: item.name || "this feedback",
+                                })}
+                              >
+                                X
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          }
+        />
       </Routes>
     </>
   );

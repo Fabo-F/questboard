@@ -39,7 +39,8 @@ public class AuthController {
             user.getId(),
             user.getUsername(),
             user.getTotalXp(),
-            user.getAvatarBytes() != null
+            user.getAvatarBytes() != null,
+            user.isAdmin()
         );
     }
 
@@ -53,7 +54,13 @@ public class AuthController {
         u.setPasswordHash(passwordEncoder.encode(req.password()));
         u = users.save(u);
 
-        return new AuthResponse(u.getId(), u.getUsername(), u.getTotalXp(), false);
+        return new AuthResponse(
+            u.getId(),
+            u.getUsername(),
+            u.getTotalXp(),
+            false,
+            u.isAdmin()
+        );
     }
 
     @PutMapping("/users/{id}/password")
