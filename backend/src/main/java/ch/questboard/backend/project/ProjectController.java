@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 
-@CrossOrigin(origins = "http://localhost:5173")
 @RestController
 @RequestMapping("/api/projects")
 public class ProjectController {
@@ -70,6 +69,33 @@ public class ProjectController {
             totalCounts.getOrDefault(p.getId(), 0L)
         ))
         .toList();
+  }
+
+  @PostMapping
+  public ProjectDto create(@RequestBody CreateProjectRequest req) {
+    if (req.userId() == null) {
+      throw new RuntimeException("User id required");
+    }
+
+    if (req.title() == null || req.title().trim().isEmpty()) {
+      throw new RuntimeException("Title required");
+    }
+
+    Project project = new Project();
+    project.setUserId(req.userId());
+    project.setTitle(req.title().trim());
+    project.setDescription(req.description());
+
+    Project saved = projects.save(project);
+
+    return new ProjectDto(
+        saved.getId(),
+        saved.getUserId(),
+        saved.getTitle(),
+        saved.getDescription(),
+        0,
+        0
+    );
   }
 
   @PutMapping("/{id}")

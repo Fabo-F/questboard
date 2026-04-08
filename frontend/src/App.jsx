@@ -254,6 +254,8 @@ function getLevel(totalXp) {
 // --- MAIN APP COMPONENT ---
 
 export default function App() {
+  const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
+
   const [dash, setDash] = useState(null);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [title, setTitle] = useState("");
@@ -309,6 +311,11 @@ export default function App() {
   });
   const [feedbackList, setFeedbackList] = useState([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+  const [authLoading, setAuthLoading] = useState(false);
+  const [createProjectLoading, setCreateProjectLoading] = useState(false);
+  const [createTaskLoading, setCreateTaskLoading] = useState(false);
+  const [saveProfileLoading, setSaveProfileLoading] = useState(false);
 
   const navigate = useNavigate();
   const XP_BY_SIZE = { SMALL: 25, MEDIUM: 50, BIG: 100 };
@@ -400,8 +407,13 @@ export default function App() {
   // Handlers
   async function handleAuth(e) {
     e.preventDefault();
+    setAuthLoading(true);
+
     try {
-      const u = authMode === "login" ? await login(username, password) : await register(username, password);
+      const u = authMode === "login"
+        ? await login(username, password)
+        : await register(username, password);
+
       localStorage.setItem("qb_userId", String(u.id));
       localStorage.setItem("qb_isAdmin", String(!!u.isAdmin));
       setUserId(u.id);
@@ -422,6 +434,8 @@ export default function App() {
       }
 
       showToast({ message: "Registration failed ❌" });
+    } finally {
+      setAuthLoading(false);
     }
   }
 
@@ -476,8 +490,16 @@ export default function App() {
   async function handleCreateProject(e) {
     e.preventDefault();
     if (!projectTitle.trim()) return;
+
+    setCreateProjectLoading(true);
+
     try {
-      const p = await createProject({ userId, title: projectTitle.trim(), description: projectDesc.trim() });
+      const p = await createProject({
+        userId,
+        title: projectTitle.trim(),
+        description: projectDesc.trim(),
+      });
+
       setProjects((prev) => [p, ...prev]);
       setShowCreateProject(false);
       setProjectTitle("");
@@ -485,6 +507,8 @@ export default function App() {
       showToast({ message: "Project created ✅" });
     } catch (err) {
       showToast({ message: err.message || "Create failed ❌" });
+    } finally {
+      setCreateProjectLoading(false);
     }
   }
 
@@ -497,6 +521,9 @@ export default function App() {
     e.preventDefault();
     if (!title.trim()) return;
     if (!size) return showToast({ message: "Pick a quest size first" });
+
+    setCreateTaskLoading(true);
+
     try {
       const t = await createTask({
         userId,
@@ -505,13 +532,16 @@ export default function App() {
         size: size.trim(),
         xp: XP_BY_SIZE[size],
       });
+
       setDash((prev) => (prev ? { ...prev, tasks: [t, ...prev.tasks] } : prev));
       setProjectTasks((prev) => [t, ...prev]);
+
       const order = loadTaskOrder(activeProject.id);
       saveTaskOrder(activeProject.id, {
         openIds: [t.id, ...order.openIds],
         doneIds: order.doneIds,
       });
+
       setShowCreateTask(false);
       setTitle("");
       setSize(null);
@@ -519,6 +549,8 @@ export default function App() {
       showToast({ message: "Quest created ✅" });
     } catch (err) {
       showToast({ message: err.message || "Create failed ❌" });
+    } finally {
+      setCreateTaskLoading(false);
     }
   }
 
@@ -683,27 +715,34 @@ export default function App() {
   }
 
   async function saveEditProfile() {
+    setSaveProfileLoading(true);
+
     try {
       if (profileUsername.trim() && profileUsername !== dash.username) {
         await updateProfile(userId, { username: profileUsername.trim() });
       }
+
       if (avatarFile) {
         const compressed = await compressAvatar(avatarFile);
         await uploadAvatar(userId, compressed);
         setAvatarFile(null);
         setAvatarPreview(null);
       }
+
       if (currentPw && newPw) {
         await changePassword(userId, currentPw, newPw);
         setCurrentPw("");
         setNewPw("");
       }
+
       await refresh();
       setShowEditProfile(false);
       setShowProfile(false);
       showToast({ message: "Profile updated ✅" });
     } catch (e) {
       showToast({ message: e.message || "Save failed ❌" });
+    } finally {
+      setSaveProfileLoading(false);
     }
   }
 
@@ -745,14 +784,26 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <button className="btn btn-primary" type="submit" style={{ width: "100%", height: 44, fontSize: 16 }}>
-              {authMode === "login" ? "Login" : "Sign Up"}
+            <button
+              className="btn btn-primary"
+              type="submit"
+              style={{ width: "100%", height: 44, fontSize: 16 }}
+              disabled={authLoading}
+            >
+              {authLoading
+                ? authMode === "login"
+                  ? "Logging in..."
+                  : "Creating account..."
+                : authMode === "login"
+                  ? "Login"
+                  : "Sign Up"}
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               onClick={() => setAuthMode(authMode === "login" ? "register" : "login")}
               style={{ width: "100%", marginTop: 12 }}
+              disabled={authLoading}
             >
               {authMode === "login" ? "Don't have an account? Register" : "Already have an account? Login"}
             </button>
@@ -773,7 +824,7 @@ export default function App() {
   const totalOpenQuests = projects.reduce((acc, p) => acc + (p.openTasks ?? 0), 0);
   const totalDoneQuests = projects.reduce((acc, p) => acc + ((p.totalTasks ?? 0) - (p.openTasks ?? 0)), 0);
   const nextUp = dash.tasks.filter((t) => t.status !== "DONE").slice(0, 3);
-  const AVATAR_URL = `http://localhost:8080/api/users/${userId}/avatar`;
+  const AVATAR_URL = `${API}/api/users/${userId}/avatar?v=${avatarVersion}`;
 
   return (
     <>
@@ -983,7 +1034,14 @@ export default function App() {
             </div>
             <div className="modalFooter" style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
               <button className="btn btn-ghost" onClick={() => setShowEditProfile(false)}>Cancel</button>
-              <button className="btn btn-primary" style={{ minWidth: 120, height: 40 }} onClick={saveEditProfile}>Save Changes</button>
+              <button
+                className="btn btn-primary"
+                style={{ minWidth: 120, height: 40 }}
+                onClick={saveEditProfile}
+                disabled={saveProfileLoading}
+              >
+                {saveProfileLoading ? "Saving..." : "Save Changes"}
+              </button>
             </div>
           </div>
         </div>
@@ -1004,7 +1062,9 @@ export default function App() {
               </div>
               <div className="modalFooter">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateProject(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Create Project</button>
+                <button type="submit" className="btn btn-primary" disabled={createProjectLoading}>
+                  {createProjectLoading ? "Creating..." : "Create Project"}
+                </button>
               </div>
             </form>
           </div>
@@ -1049,7 +1109,9 @@ export default function App() {
               </div>
               <div className="modalFooter">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateTask(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Add Quest</button>
+                <button type="submit" className="btn btn-primary" disabled={createTaskLoading}>
+                  {createTaskLoading ? "Creating..." : "Add Quest"}
+                </button>
               </div>
             </form>
           </div>
