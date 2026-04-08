@@ -18,9 +18,9 @@ services:
       ports:
         - "8080:8080"
       environment:
-        SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/questboard
-        SPRING_DATASOURCE_USERNAME: questboard
-        SPRING_DATASOURCE_PASSWORD: questboard
+        SPRING_DATASOURCE_URL: jdbc:postgresql://ep-small-bonus-anegm498-pooler.c-6.us-east-1.aws.neon.tech/neondb?sslmode=require
+        SPRING_DATASOURCE_USERNAME: neondb_owner
+        SPRING_DATASOURCE_PASSWORD: npg_og5TtSjlfqM4
       depends_on:
         - db
 
