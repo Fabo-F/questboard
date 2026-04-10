@@ -344,7 +344,7 @@ export default function App() {
 
     const timer = setTimeout(() => {
       setShowWakeupMessage(true);
-    }, 2500);
+    }, 5000);
 
     return () => clearTimeout(timer);
   }, [dash]);
@@ -804,13 +804,16 @@ export default function App() {
               style={{ width: "100%", height: 44, fontSize: 16 }}
               disabled={authLoading}
             >
-              {authLoading
-                ? authMode === "login"
-                  ? "Logging in..."
-                  : "Creating account..."
-                : authMode === "login"
-                  ? "Login"
-                  : "Sign Up"}
+              {authLoading ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span className="spinner spinner-sm" />
+                  {authMode === "login" ? "Logging in..." : "Creating account..."}
+                </span>
+              ) : authMode === "login" ? (
+                "Login"
+              ) : (
+                "Sign Up"
+              )}
             </button>
             <button
               type="button"
@@ -1079,7 +1082,14 @@ export default function App() {
                 onClick={saveEditProfile}
                 disabled={saveProfileLoading}
               >
-                {saveProfileLoading ? "Saving..." : "Save Changes"}
+                {saveProfileLoading ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <span className="spinner spinner-sm" />
+                    Saving...
+                  </span>
+                ) : (
+                  "Save Changes"
+                )}
               </button>
             </div>
           </div>
@@ -1102,7 +1112,14 @@ export default function App() {
               <div className="modalFooter">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateProject(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={createProjectLoading}>
-                  {createProjectLoading ? "Creating..." : "Create Project"}
+                  {createProjectLoading ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span className="spinner spinner-sm" />
+                      Creating...
+                    </span>
+                  ) : (
+                    "Create Project"
+                  )}
                 </button>
               </div>
             </form>
@@ -1149,7 +1166,14 @@ export default function App() {
               <div className="modalFooter">
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreateTask(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={createTaskLoading}>
-                  {createTaskLoading ? "Creating..." : "Add Quest"}
+                  {createTaskLoading ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span className="spinner spinner-sm" />
+                      Creating...
+                    </span>
+                  ) : (
+                    "Add Quest"
+                  )}
                 </button>
               </div>
             </form>
@@ -1625,7 +1649,10 @@ export default function App() {
                   </div>
 
                   {projectLoading ? (
-                    <div style={{ opacity: 0.7, marginTop: 10 }}>Loading tasks…</div>
+                    <div style={{ opacity: 0.7, marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span className="spinner spinner-sm" />
+                      Loading tasks...
+                    </div>
                   ) : (
                     <DndContext
                       collisionDetection={closestCenter}

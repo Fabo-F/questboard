@@ -865,3 +865,9 @@ select:-webkit-autofill {
     transform: rotate(360deg);
   }
 }
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
