@@ -257,6 +257,7 @@ export default function App() {
   const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
   const [dash, setDash] = useState(null);
+  const [showWakeupMessage, setShowWakeupMessage] = useState(false);
   const [showCreateTask, setShowCreateTask] = useState(false);
   const [title, setTitle] = useState("");
   const [size, setSize] = useState(null);
@@ -334,6 +335,19 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("qb_theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (dash) {
+      setShowWakeupMessage(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setShowWakeupMessage(true);
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [dash]);
 
   const refresh = useCallback(async () => {
     if (!userId) return;
@@ -816,7 +830,32 @@ export default function App() {
     );
   }
 
-  if (!dash) return <div className="page" style={{ justifyContent: "center", alignItems: "center" }}><div className="card">Loading dash…</div></div>;
+  if (!dash) {
+    return (
+      <div
+        className="page"
+        style={{ justifyContent: "center", alignItems: "center", minHeight: "100vh" }}
+      >
+        <div className="card" style={{ maxWidth: 420, textAlign: "center" }}>
+          <div className="spinner" style={{ margin: "0 auto 14px auto" }} />
+
+          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 10 }}>
+            Loading QuestBoard...
+          </div>
+
+          <div style={{ opacity: 0.7 }}>
+            Please wait a moment.
+          </div>
+
+          {showWakeupMessage && (
+            <div style={{ marginTop: 16, fontSize: 14, opacity: 0.75, lineHeight: 1.5 }}>
+              Waking up server and database. First load can take a few seconds on free hosting.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const levelInfo = getLevel(dash.totalXp);
   const welcomeText = `Welcome back, ${dash.username}!`;
